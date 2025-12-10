@@ -37,6 +37,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [updatingSkuIds, setUpdatingSkuIds] = useState<Set<string>>(new Set());
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, GroupedCartItem> = {};
@@ -52,7 +53,13 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
       groups[item.itemId].skus.push(item);
     });
     
-    return Object.values(groups);
+    // Sort groups by itemId and SKUs within groups by skuId to prevent flickering
+    return Object.values(groups)
+      .sort((a, b) => a.itemId.localeCompare(b.itemId))
+      .map(group => ({
+        ...group,
+        skus: group.skus.sort((a, b) => a.skuId.localeCompare(b.skuId))
+      }));
   }, [items]);
 
   const fetchCart = useCallback(async () => {
@@ -107,6 +114,19 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   const updateQuantity = async (skuId: string, newQuantity: number) => {
     if (newQuantity <= 0) return; // Or handle remove
     
+    // Optimistic update - update UI immediately
+    const previousItems = items;
+    setItems(prev => 
+      prev.map(item => 
+        item.skuId === skuId 
+          ? { ...item, quantity: newQuantity }
+          : item
+      )
+    );
+    
+    // Mark as updating
+    setUpdatingSkuIds(prev => new Set(prev).add(skuId));
+    
     try {
         const headers: Record<string, string> = { 
             'X-API-Key': apiKey,
@@ -121,13 +141,22 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         });
         const data = await res.json();
         
-        if (data.success) {
-            fetchCart(); // Refresh
-        } else {
+        if (!data.success) {
+            // Revert on failure
+            setItems(previousItems);
             setError(data.message || 'Failed to update quantity');
         }
-    } catch {
+    } catch (err) {
+        // Revert on error
+        setItems(previousItems);
         setError('Failed to update quantity');
+    } finally {
+        // Remove updating indicator
+        setUpdatingSkuIds(prev => {
+            const next = new Set(prev);
+            next.delete(skuId);
+            return next;
+        });
     }
   };
 
@@ -259,16 +288,22 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
                             <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
                               <button 
                                 onClick={() => updateQuantity(sku.skuId, sku.quantity - 1)}
-                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors"
+                                disabled={updatingSkuIds.has(sku.skuId) || sku.quantity <= 1}
+                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 -
                               </button>
                               <span className="px-2 text-sm font-medium text-gray-900 dark:text-white min-w-[24px] text-center">
-                                {sku.quantity}
+                                {updatingSkuIds.has(sku.skuId) ? (
+                                  <span className="inline-block animate-spin">⟳</span>
+                                ) : (
+                                  sku.quantity
+                                )}
                               </span>
                               <button 
                                 onClick={() => updateQuantity(sku.skuId, sku.quantity + 1)}
-                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors"
+                                disabled={updatingSkuIds.has(sku.skuId)}
+                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 +
                               </button>
