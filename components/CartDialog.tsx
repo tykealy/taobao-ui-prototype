@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface CartItem {
   id: string;
@@ -14,10 +14,16 @@ interface CartItem {
   promotionPrice: string;
   couponPrice: string;
   picUrl: string;
-  title?: string;
-  sku_info?: string;
+  itemTitle: string;
+  skuTitle: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface GroupedCartItem {
+  itemId: string;
+  itemTitle: string;
+  skus: CartItem[];
 }
 
 interface CartDialogProps {
@@ -31,6 +37,23 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, GroupedCartItem> = {};
+    
+    items.forEach(item => {
+      if (!groups[item.itemId]) {
+        groups[item.itemId] = {
+          itemId: item.itemId,
+          itemTitle: item.itemTitle,
+          skus: []
+        };
+      }
+      groups[item.itemId].skus.push(item);
+    });
+    
+    return Object.values(groups);
+  }, [items]);
 
   const fetchCart = useCallback(async () => {
     console.log('🛒 fetchCart called', { apiKey: apiKey ? 'exists' : 'missing', authToken: authToken ? 'exists' : 'missing' });
@@ -177,60 +200,93 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
               <p>Your cart is empty</p>
             </div>
           ) : (
-            items.map((item) => (
-              <div key={item.id} className="flex gap-4 p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                {/* Image Placeholder */}
-                <div className="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-md flex-shrink-0 flex items-center justify-center text-gray-400">
-                    {item.picUrl ? <img src={item.picUrl} alt={item.title} className="w-full h-full object-cover rounded-md"/> : 'Img'}
+            groupedItems.map((group) => (
+              <div 
+                key={group.itemId} 
+                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+              >
+                {/* Product Header */}
+                <div className="bg-gray-50 dark:bg-gray-800/50 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                    {group.itemTitle}
+                  </h3>
                 </div>
                 
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white line-clamp-1">
-                      {item.title || `Item #${item.itemId}`}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {item.sku_info || `SKU: ${item.skuId}`}
-                    </p>
-                  </div>
-                  
-                  <div className="flex justify-between items-end mt-2">
-                    <div className="font-bold text-orange-600 dark:text-orange-500">
-                      ${((parseFloat(item.promotionPrice) || 0) * item.quantity).toFixed(2)}
-                      {item.quantity > 1 && (
-                         <span className="text-xs font-normal text-gray-400 ml-1">
-                           (${parseFloat(item.promotionPrice).toFixed(2)} each)
-                         </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-                            <button 
-                                onClick={() => updateQuantity(item.skuId, item.quantity - 1)}
-                                className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                            >
+                {/* SKU Variants List */}
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {group.skus.map((sku) => (
+                    <div 
+                      key={sku.id} 
+                      className="flex gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/70 transition-colors"
+                    >
+                      {/* SKU Image */}
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-md flex-shrink-0 overflow-hidden">
+                        {sku.picUrl ? (
+                          <img 
+                            src={sku.picUrl} 
+                            alt={sku.skuTitle || 'Product variant'} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                            Img
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* SKU Details */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        {/* SKU Title */}
+                        <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+                          {sku.skuTitle}
+                        </p>
+                        
+                        {/* Price and Controls */}
+                        <div className="flex justify-between items-center mt-2 gap-2 flex-wrap">
+                          {/* Price */}
+                          <div className="font-bold text-orange-600 dark:text-orange-500 text-sm">
+                            ${(parseFloat(sku.promotionPrice) * sku.quantity).toFixed(2)}
+                            {sku.quantity > 1 && (
+                              <span className="text-xs font-normal text-gray-400 ml-1">
+                                (${parseFloat(sku.promotionPrice).toFixed(2)} each)
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* Quantity Controls + Remove Button */}
+                          <div className="flex items-center gap-2">
+                            {/* Quantity Stepper */}
+                            <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
+                              <button 
+                                onClick={() => updateQuantity(sku.skuId, sku.quantity - 1)}
+                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors"
+                              >
                                 -
-                            </button>
-                            <span className="px-2 text-sm font-medium text-gray-900 dark:text-white min-w-[20px] text-center">
-                                {item.quantity}
-                            </span>
-                            <button 
-                                onClick={() => updateQuantity(item.skuId, item.quantity + 1)}
-                                className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                            >
+                              </button>
+                              <span className="px-2 text-sm font-medium text-gray-900 dark:text-white min-w-[24px] text-center">
+                                {sku.quantity}
+                              </span>
+                              <button 
+                                onClick={() => updateQuantity(sku.skuId, sku.quantity + 1)}
+                                className="px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm transition-colors"
+                              >
                                 +
+                              </button>
+                            </div>
+                            
+                            {/* Remove Button */}
+                            <button 
+                              onClick={() => removeItem(sku.skuId)}
+                              className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors text-sm"
+                              title="Remove item"
+                            >
+                              🗑
                             </button>
+                          </div>
                         </div>
-                        <button 
-                            onClick={() => removeItem(item.skuId)}
-                            className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                            title="Remove"
-                        >
-                            🗑
-                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             ))
