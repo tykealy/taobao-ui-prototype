@@ -101,6 +101,11 @@ function formatPrice(item: ProductData) {
   };
 }
 
+
+import { CartDialog } from '@/components/CartDialog';
+
+// ... existing interfaces ...
+
 export default function Home() {
   const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<ProductData[]>([]);
@@ -109,37 +114,42 @@ export default function Home() {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [authToken, setAuthToken] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(true);
+  const [isCartOpen, setIsCartOpen] = useState(false);
   
   const router = useRouter();
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
+  // Save API key to localStorage
+  const saveApiKey = (key: string, token: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('apiKey', key);
+      localStorage.setItem('authToken', token);
+      setShowApiKeyInput(false);
+    }
+  };
+
   // Load API key from localStorage on mount
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('taobao_api_key');
-    if (savedApiKey) {
-      setApiKey(savedApiKey);
-      setShowApiKeyInput(false);
+    if (typeof window !== 'undefined') {
+      const storedApiKey = localStorage.getItem('apiKey');
+      const storedAuthToken = localStorage.getItem('authToken');
+      if (storedApiKey) {
+        setApiKey(storedApiKey);
+        setShowApiKeyInput(false);
+      }
+      if (storedAuthToken) {
+        setAuthToken(storedAuthToken);
+      }
     }
   }, []);
 
-  // Save API key to localStorage
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('taobao_api_key', key);
-    setShowApiKeyInput(false);
-  };
-
-  // Fetch items from API
-  const fetchItems = useCallback(async (page: number, searchKeyword: string, isNewSearch: boolean = false) => {
+  // Fetch products from API
+  const fetchProducts = useCallback(async (page: number, searchKeyword: string) => {
     if (!apiKey) {
       setError('Please set your API key first');
-      return;
-    }
-
-    if (!searchKeyword.trim()) {
-      setError('Please enter a search keyword');
       return;
     }
 
@@ -147,92 +157,93 @@ export default function Home() {
     setError('');
 
     try {
-      const params = new URLSearchParams({
-        keyword: searchKeyword,
-        page_no: page.toString(),
-        page_size: '20',
-        language: 'en'
-      });
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/item-search?${params}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-API-Key': apiKey
-        }
-      });
-
-      const data: ApiResponse = await response.json();
+      const headers: HeadersInit = {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json',
+      };
       
-      // Log the API response for debugging
-      console.log('🔍 Item Search API Response:', data);
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
 
-      if (data.success && data.data?._body?.data?.data) {
-        const newItems = data.data._body.data.data;
+      const response = await fetch(`http://localhost:3000/api/v1/taobao/item-search?keyword=${encodeURIComponent(searchKeyword)}&page_no=${page}&language=en`, {
+        method: 'GET',
+        headers,
+      });
+
+      const result: ApiResponse = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to fetch products');
+      }
+
+      if (result.success && result.data?._body?.data?.data) {
+        const newItems = result.data._body.data.data;
         
-        console.log('✅ Items found:', newItems.length, newItems);
-        
-        if (newItems.length === 0) {
-          setHasMore(false);
+        if (page === 1) {
+          setItems(newItems);
         } else {
-          setItems(prev => isNewSearch ? newItems : [...prev, ...newItems]);
-          setPageNo(page);
+          setItems(prev => [...prev, ...newItems]);
         }
+        
+        setHasMore(newItems.length > 0);
       } else {
-        setError(data.message || 'Failed to fetch items');
-        if (isNewSearch) {
-          setItems([]);
-        }
+        throw new Error(result.message || 'No data returned');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      if (isNewSearch) {
-        setItems([]);
-      }
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
-  }, [apiKey]);
+  }, [apiKey, authToken]);
 
-  // Handle search
+  // Handle search form submission
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setItems([]);
+    if (!keyword.trim() || !apiKey) return;
+    
     setPageNo(1);
+    setItems([]);
     setHasMore(true);
-    fetchItems(1, keyword, true);
+    fetchProducts(1, keyword);
   };
 
-  // Infinite scroll observer
+  // Set up intersection observer for infinite scroll
   useEffect(() => {
     if (loading || !hasMore) return;
-
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-    }
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && items.length > 0) {
-          fetchItems(pageNo + 1, keyword);
+          const nextPage = pageNo + 1;
+          setPageNo(nextPage);
+          fetchProducts(nextPage, keyword);
         }
       },
       { threshold: 0.1 }
     );
 
-    if (loadMoreRef.current) {
-      observerRef.current.observe(loadMoreRef.current);
+    const currentLoadMoreRef = loadMoreRef.current;
+    if (currentLoadMoreRef) {
+      observerRef.current.observe(currentLoadMoreRef);
     }
 
     return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
+      if (observerRef.current && currentLoadMoreRef) {
+        observerRef.current.unobserve(currentLoadMoreRef);
       }
     };
-  }, [loading, hasMore, items.length, pageNo, keyword, fetchItems]);
+  }, [loading, hasMore, pageNo, keyword, items.length, fetchProducts]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
+      <CartDialog 
+        isOpen={isCartOpen} 
+        onClose={() => setIsCartOpen(false)} 
+        apiKey={apiKey}
+        authToken={authToken}
+      />
       {/* Simple Header */}
       <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
@@ -240,15 +251,27 @@ export default function Home() {
             <h1 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
               Product Search
             </h1>
-            <button
-              onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-              className="px-3 py-2 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              {apiKey ? '🔑 Key Set' : '⚙️ Set Key'}
-            </button>
+            <div className="flex items-center gap-2">
+                <button
+                onClick={() => {
+                  console.log('🛒 Cart button clicked', { apiKey: apiKey ? 'exists' : 'missing', authToken: authToken ? 'exists' : 'missing' });
+                  setIsCartOpen(true);
+                }}
+                className="px-3 py-2 text-xs sm:text-sm font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 transition-colors flex items-center gap-1"
+                >
+                🛒 Cart
+                </button>
+                <button
+                onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                className="px-3 py-2 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                {apiKey ? '🔑 Key Set' : '⚙️ Set Key'}
+                </button>
+            </div>
           </div>
         </div>
       </header>
+
 
       {/* Desktop Search */}
       <div className="hidden sm:block sticky top-[52px] sm:top-[60px] z-40 bg-white dark:bg-gray-900 shadow-md">
@@ -257,20 +280,27 @@ export default function Home() {
           {showApiKeyInput && (
             <div className="mb-4 p-4 bg-orange-50 dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-gray-700">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-                API Key Configuration
+                API Configuration
               </h2>
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter your API key"
-                  className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+                  placeholder="X-API-Key"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+                />
+                <input
+                  type="password"
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder="Authorization Bearer Token (optional)"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
                 />
                 <button
-                  onClick={() => saveApiKey(apiKey)}
+                  onClick={() => saveApiKey(apiKey, authToken)}
                   disabled={!apiKey}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm"
+                  className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm"
                 >
                   Save
                 </button>
@@ -461,18 +491,25 @@ export default function Home() {
           {/* API Key Input (Mobile) */}
           {showApiKeyInput && (
             <div className="mb-3 p-3 bg-orange-50 dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-gray-700">
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="API Key"
-                  className="flex-1 px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                  placeholder="X-API-Key"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                />
+                <input
+                  type="password"
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder="Bearer Token (optional)"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
                 />
                 <button
-                  onClick={() => saveApiKey(apiKey)}
+                  onClick={() => saveApiKey(apiKey, authToken)}
                   disabled={!apiKey}
-                  className="px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px] min-w-[60px]"
+                  className="w-full px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px]"
                 >
                   Save
                 </button>

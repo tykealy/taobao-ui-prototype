@@ -2,15 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { CartDialog } from '@/components/CartDialog';
 
-// Helper function to format price display
-// Price comes in CNY cents, so divide by 100 first to get yuan, then divide by ~7 to get USD
-function formatPrice(priceInCNYCents: number) {
-  const priceInYuan = priceInCNYCents / 100; // Convert cents to yuan
-  const priceInUSD = priceInYuan / parseFloat(process.env.NEXT_PUBLIC_CNY_TO_USD_RATE || '6.1'); // Convert yuan to USD (approximately)
-  return priceInUSD.toFixed(2);
-}
- 
 export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -20,16 +13,34 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [authToken, setAuthToken] = useState('');
   const [selectedImage, setSelectedImage] = useState<string>('');
+  
+  // SKU Selection and Cart state
+  const [selectedSku, setSelectedSku] = useState<any>(null);
+  const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  
+  // Toast notification
+  const [toast, setToast] = useState<{show: boolean; message: string; type: 'success' | 'error'}>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
 
-  // Load API key from localStorage
+  // Load API key and auth token from localStorage
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('taobao_api_key');
+    const savedApiKey = localStorage.getItem('apiKey');
+    const savedAuthToken = localStorage.getItem('authToken');
     if (savedApiKey) {
       setApiKey(savedApiKey);
     } else {
       setError('API key not found. Please set your API key on the search page.');
       setLoading(false);
+    }
+    if (savedAuthToken) {
+      setAuthToken(savedAuthToken);
     }
   }, []);
 
@@ -51,7 +62,8 @@ export default function ProductDetailPage() {
         const response = await fetch(url, {
           method: 'GET',
           headers: {
-            'X-API-Key': apiKey
+            'X-API-Key': apiKey,
+            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
           }
         });
 
@@ -74,6 +86,60 @@ export default function ProductDetailPage() {
 
     fetchProductDetail();
   }, [apiKey, itemId]);
+
+  // Auto-select SKU if only one exists
+  useEffect(() => {
+    if (product?.sku_list && product.sku_list.length === 1) {
+      setSelectedSku(product.sku_list[0]);
+    }
+  }, [product]);
+
+  // Auto-dismiss toast after 3 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast({ ...toast, show: false });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
+  // Add to cart function
+  const addToCart = async () => {
+    if (!selectedSku || !authToken) return;
+
+    setIsAddingToCart(true);
+
+    try {
+      const response = await fetch('http://localhost:3000/api/v1/taobao/cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          itemId: String(product.item_id),
+          skuId: String(selectedSku.sku_id),
+          quantity: quantity
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setToast({ show: true, message: 'Added to cart!', type: 'success' });
+        setShowQuantityModal(false);
+        setQuantity(1);
+      } else {
+        setToast({ show: true, message: data.message || 'Failed to add to cart', type: 'error' });
+      }
+    } catch (err) {
+      setToast({ show: true, message: 'Error adding to cart', type: 'error' });
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -122,19 +188,167 @@ export default function ProductDetailPage() {
     );
   }
 
-  const priceInCNYCents = parseFloat(product.price || '0');
-  const promotionPriceInCNYCents = product.promotion_price ? parseFloat(product.promotion_price) : undefined;
-  const priceInCNY = priceInCNYCents / 100; // Convert cents to yuan
-  const promotionPriceInCNY = promotionPriceInCNYCents ? promotionPriceInCNYCents / 100 : undefined;
-  const priceInUSD = parseFloat(formatPrice(priceInCNYCents));
-  const promotionPriceInUSD = promotionPriceInCNYCents ? parseFloat(formatPrice(promotionPriceInCNYCents)) : undefined;
+  // Use pre-calculated USD prices from API
+  const priceInUSD = parseFloat(product.price_usd || '0');
+  const promotionPriceInUSD = product.promotion_price_usd ? parseFloat(product.promotion_price_usd) : undefined;
   const hasPromotion = promotionPriceInUSD !== undefined && promotionPriceInUSD > 0 && promotionPriceInUSD < priceInUSD;
   const currentPrice = hasPromotion && promotionPriceInUSD ? promotionPriceInUSD : priceInUSD;
   const originalPrice = hasPromotion ? priceInUSD : undefined;
   const discount = hasPromotion && promotionPriceInUSD ? Math.round((1 - promotionPriceInUSD / priceInUSD) * 100) : 0;
+  
+  // CNY prices for display (converted from cents to yuan)
+  const priceInCNYCents = parseFloat(product.price || '0');
+  const priceInCNY = priceInCNYCents / 100;
+
+  // Calculate SKU price for modal
+  const getSkuPrice = (sku: any) => {
+    const hasPromotion = sku.promotion_price_usd && 
+                         parseFloat(sku.promotion_price_usd) > 0 && 
+                         parseFloat(sku.promotion_price_usd) < parseFloat(sku.price_usd);
+    return hasPromotion ? parseFloat(sku.promotion_price_usd) : parseFloat(sku.price_usd || 0);
+  };
+
+  const selectedSkuPrice = selectedSku ? getSkuPrice(selectedSku) : 0;
+  const totalPrice = selectedSkuPrice * quantity;
+
+  // Get SKU summary for modal
+  const getSkuSummary = (sku: any) => {
+    const mlSkuProps = product.multi_language_info?.sku_properties?.find(
+      (sp: any) => sp.sku_id === sku.sku_id
+    );
+    const displayProperties = mlSkuProps?.properties || sku.properties;
+    return displayProperties?.map((prop: any) => prop.value_name).join(', ') || 'Default';
+  };
+
+  const isAddToCartDisabled = !selectedSku || !authToken || (selectedSku?.quantity || 0) === 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-5 fade-in duration-300">
+          <div className={`px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 ${
+            toast.type === 'success' 
+              ? 'bg-green-500 text-white' 
+              : 'bg-red-500 text-white'
+          }`}>
+            <span>{toast.type === 'success' ? '✓' : '✕'}</span>
+            <span className="font-medium">{toast.message}</span>
+            <button 
+              onClick={() => setToast({ ...toast, show: false })}
+              className="ml-2 hover:opacity-80 transition-opacity"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quantity Modal */}
+      {showQuantityModal && selectedSku && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Quantity</h3>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* SKU Info */}
+              <div className="flex gap-4">
+                {selectedSku.pic_url && (
+                  <img 
+                    src={selectedSku.pic_url} 
+                    alt="SKU" 
+                    className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                  />
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                    {product.multi_language_info?.title || product.title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    {getSkuSummary(selectedSku)}
+                  </p>
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                    ${selectedSkuPrice.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Quantity Selector */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Quantity
+                </label>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    disabled={quantity <= 1}
+                    className="w-10 h-10 flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 1;
+                      setQuantity(Math.min(Math.max(1, val), selectedSku.quantity));
+                    }}
+                    min="1"
+                    max={selectedSku.quantity}
+                    className="w-20 h-10 text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={() => setQuantity(Math.min(selectedSku.quantity, quantity + 1))}
+                    disabled={quantity >= selectedSku.quantity}
+                    className="w-10 h-10 flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    +
+                  </button>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {selectedSku.quantity} available
+                  </span>
+                </div>
+              </div>
+
+              {/* Total Price */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total</span>
+                  <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                    ${totalPrice.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowQuantityModal(false);
+                  setQuantity(1);
+                }}
+                disabled={isAddingToCart}
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addToCart}
+                disabled={isAddingToCart}
+                className="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isAddingToCart ? 'Adding...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -151,7 +365,7 @@ export default function ProductDetailPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 sm:p-8">
             {/* Left Column - Images */}
@@ -260,7 +474,15 @@ export default function ProductDetailPage() {
                       });
 
                       return (
-                         <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:border-orange-500 dark:hover:border-orange-500 transition-all hover:shadow-md cursor-pointer">
+                         <div 
+                          key={idx} 
+                          onClick={() => setSelectedSku(sku)}
+                          className={`border rounded-lg p-3 transition-all hover:shadow-md cursor-pointer ${
+                            selectedSku?.sku_id === sku.sku_id
+                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-500'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700'
+                          }`}
+                        >
                           <div className="flex gap-3">
                             {sku.pic_url && (
                               <img src={sku.pic_url} alt="SKU" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
@@ -275,18 +497,18 @@ export default function ProductDetailPage() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-baseline gap-2">
-                                  {sku.promotion_price && parseFloat(sku.promotion_price) > 0 && parseFloat(sku.promotion_price) < parseFloat(sku.price) ? (
+                                  {sku.promotion_price_usd && parseFloat(sku.promotion_price_usd) > 0 && parseFloat(sku.promotion_price_usd) < parseFloat(sku.price_usd) ? (
                                     <>
                                       <span className="text-base font-bold text-orange-600 dark:text-orange-400">
-                                        ${formatPrice(parseFloat(sku.promotion_price))}
+                                        ${parseFloat(sku.promotion_price_usd).toFixed(2)}
                                       </span>
                                       <span className="text-xs text-gray-400 line-through">
-                                        ${formatPrice(parseFloat(sku.price))}
+                                        ${parseFloat(sku.price_usd).toFixed(2)}
                                       </span>
                                     </>
                                   ) : (
                                     <span className="text-base font-bold text-orange-600 dark:text-orange-400">
-                                      ${formatPrice(parseFloat(sku.price || 0))}
+                                      ${parseFloat(sku.price_usd || 0).toFixed(2)}
                                     </span>
                                   )}
                                 </div>
@@ -353,6 +575,43 @@ export default function ProductDetailPage() {
               />
             </div>
           )}
+        </div>
+
+        {/* Sticky Add to Cart Button */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg z-40">
+          <div className="max-w-7xl mx-auto">
+            {!authToken ? (
+              <button
+                disabled
+                className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"
+              >
+                Please login to add items to cart
+              </button>
+            ) : !selectedSku ? (
+              <button
+                disabled
+                className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"
+              >
+                Select a variant first
+              </button>
+            ) : selectedSku.quantity === 0 ? (
+              <button
+                disabled
+                className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"
+              >
+                Out of stock
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowQuantityModal(true)}
+                className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg font-semibold shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <span className="text-xl">🛒</span>
+                <span>Add to Cart</span>
+                <span className="text-sm opacity-90">- ${selectedSkuPrice.toFixed(2)}</span>
+              </button>
+            )}
+          </div>
         </div>
       </main>
     </div>
