@@ -146,6 +146,37 @@ export default function Home() {
     }
   }, []);
 
+  // Restore search state from sessionStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSearchState = sessionStorage.getItem('searchState');
+      if (savedSearchState) {
+        try {
+          const { keyword: savedKeyword, items: savedItems, pageNo: savedPageNo } = JSON.parse(savedSearchState);
+          if (savedKeyword && savedItems && savedItems.length > 0) {
+            setKeyword(savedKeyword);
+            setItems(savedItems);
+            setPageNo(savedPageNo || 1);
+            setHasMore(true);
+          }
+        } catch (err) {
+          console.error('Failed to restore search state:', err);
+        }
+      }
+    }
+  }, []);
+
+  // Save search state to sessionStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && keyword && items.length > 0) {
+      sessionStorage.setItem('searchState', JSON.stringify({
+        keyword,
+        items,
+        pageNo
+      }));
+    }
+  }, [keyword, items, pageNo]);
+
   // Fetch products from API
   const fetchProducts = useCallback(async (page: number, searchKeyword: string) => {
     if (!apiKey) {
