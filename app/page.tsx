@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { extractProductId, isUrl } from '@/lib/extract-product-id';
 
 // API Response Types based on taobao-api-response-type.md
 interface ProductProperty {
@@ -117,6 +118,7 @@ export default function Home() {
   const [authToken, setAuthToken] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   
   const router = useRouter();
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -234,6 +236,24 @@ export default function Home() {
     e.preventDefault();
     if (!keyword.trim() || !apiKey) return;
     
+    // Check if input is a product URL
+    if (isUrl(keyword)) {
+      const productId = extractProductId(keyword);
+      
+      if (productId) {
+        // Show loading state and navigate to product page
+        setIsNavigating(true);
+        setError('');
+        router.push(`/product/${productId}`);
+        return;
+      } else {
+        // Show error if URL detected but ID couldn't be extracted
+        setError('Could not extract product ID from the URL. Please check the link and try again.');
+        return;
+      }
+    }
+    
+    // Existing keyword search logic
     setPageNo(1);
     setItems([]);
     setHasMore(true);
@@ -346,15 +366,15 @@ export default function Home() {
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Search products..."
+                placeholder="Search products or paste product link..."
                 className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
               />
               <button
                 type="submit"
-                disabled={loading || !keyword.trim() || !apiKey}
+                disabled={loading || !keyword.trim() || !apiKey || isNavigating}
                 className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold shadow-md min-h-[44px]"
               >
-                {loading && items.length === 0 ? 'Searching...' : 'Search'}
+                {isNavigating ? 'Opening...' : loading && items.length === 0 ? 'Searching...' : 'Search'}
               </button>
             </div>
           </form>
@@ -551,19 +571,37 @@ export default function Home() {
           {/* Search Form (Mobile) */}
           <form onSubmit={handleSearch}>
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Search products..."
-                className="flex-1 px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
-              />
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="Search or paste link..."
+                  className="w-full px-4 py-2.5 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                />
+                {/* Paste button for mobile */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      setKeyword(text);
+                    } catch (err) {
+                      console.error('Failed to read clipboard:', err);
+                    }
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-lg hover:opacity-70 transition-opacity"
+                  aria-label="Paste from clipboard"
+                >
+                  📋
+                </button>
+              </div>
               <button
                 type="submit"
-                disabled={loading || !keyword.trim() || !apiKey}
+                disabled={loading || !keyword.trim() || !apiKey || isNavigating}
                 className="px-5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all font-semibold text-sm shadow-md min-h-[44px] min-w-[70px]"
               >
-                {loading && items.length === 0 ? '...' : 'Search'}
+                {isNavigating ? '...' : loading && items.length === 0 ? '...' : 'Search'}
               </button>
             </div>
           </form>
