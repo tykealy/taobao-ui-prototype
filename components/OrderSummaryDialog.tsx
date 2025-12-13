@@ -2,12 +2,9 @@
 
 import { useState } from 'react';
 
-interface OrderItem {
+interface SKU {
   sku_id: string;
   mp_sku_id: string;
-  item_id: string;
-  mp_item_id: string;
-  item_title: string;
   sku_title: string;
   pic_url: string;
   quantity: number;
@@ -21,6 +18,21 @@ interface OrderItem {
   error_code?: string;
 }
 
+interface OrderItem {
+  item_id: string;
+  mp_item_id: string;
+  item_title: string;
+  seller_id: string;
+  seller_nick: string;
+  total_quantity: number;
+  subtotal_usd: number;
+  shipping_fee_usd: number;
+  total_usd: number;
+  line_items: SKU[][];
+  is_fully_available: boolean;
+  has_any_available: boolean;
+}
+
 interface OrderSummaryData {
   success: boolean;
   message: string;
@@ -29,7 +41,9 @@ interface OrderSummaryData {
       total_items: number;
       available_items: number;
       unavailable_items: number;
+      subtotal_usd: number;
       total_shipping_fee_usd: number;
+      grand_total_usd: number;
     };
     items: OrderItem[];
   };
@@ -63,21 +77,53 @@ export function OrderSummaryDialog({
 
   const { summary, items } = data.data;
   
-  // Categorize items into 3 groups
-  const availableItems = items.filter(item => item.is_available);
+  // Flatten SKUs with item context
+  type FlattenedSKU = SKU & {
+    item_id: string;
+    mp_item_id: string;
+    item_title: string;
+    seller_id: string;
+    seller_nick: string;
+    shipping_fee_usd: number;
+  };
   
-  const insufficientStockItems = items.filter(item => 
-    !item.is_available && 
-    item.available_quantity !== null && 
-    item.available_quantity !== undefined &&
-    item.available_quantity > 0
+  const flattenedSKUs: FlattenedSKU[] = items.flatMap(item => 
+    item.line_items.flat().map(lineItem => ({
+      ...lineItem,
+      item_id: item.item_id,
+      mp_item_id: item.mp_item_id,
+      item_title: item.item_title,
+      seller_id: item.seller_id,
+      seller_nick: item.seller_nick,
+      shipping_fee_usd: item.shipping_fee_usd
+    }))
   );
   
-  const unavailableItems = items.filter(item => 
-    !item.is_available && 
-    (item.available_quantity === null || 
-     item.available_quantity === undefined ||
-     item.available_quantity === 0)
+  // Helper function to group SKUs by item_id
+  const groupItemsByItemId = (skus: FlattenedSKU[]) => {
+    const grouped = new Map<string, FlattenedSKU[]>();
+    skus.forEach(sku => {
+      const existing = grouped.get(sku.item_id) || [];
+      grouped.set(sku.item_id, [...existing, sku]);
+    });
+    return Array.from(grouped.values());
+  };
+  
+  // Categorize SKUs into 3 groups
+  const availableItems = flattenedSKUs.filter(sku => sku.is_available);
+  
+  const insufficientStockItems = flattenedSKUs.filter(sku => 
+    !sku.is_available && 
+    sku.available_quantity !== null && 
+    sku.available_quantity !== undefined &&
+    sku.available_quantity > 0
+  );
+  
+  const unavailableItems = flattenedSKUs.filter(sku => 
+    !sku.is_available && 
+    (sku.available_quantity === null || 
+     sku.available_quantity === undefined ||
+     sku.available_quantity === 0)
   );
 
   const hasAdjustments = Object.keys(adjustedQuantities).length > 0;
@@ -138,9 +184,9 @@ export function OrderSummaryDialog({
 
       // Step 2: Collect SKU IDs for re-validation (exclude zero quantities)
       const skuIdsToValidate = [
-        ...availableItems.map(item => item.sku_id),
+        ...availableItems.map(sku => sku.sku_id),
         ...insufficientStockItems
-          .map(item => item.sku_id)
+          .map(sku => sku.sku_id)
           .filter(skuId => {
             const adjustedQty = adjustedQuantities[skuId];
             return adjustedQty === undefined || adjustedQty > 0;
@@ -226,54 +272,90 @@ export function OrderSummaryDialog({
               <h3 className="font-semibold text-green-700 dark:text-green-400 mb-3 flex items-center gap-2">
                 ✓ Available Items ({availableItems.length})
               </h3>
-              <div className="space-y-3">
-                {availableItems.map((item) => (
-                  <div 
-                    key={item.sku_id} 
-                    className="flex gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800"
-                  >
-                    {/* Image */}
-                    <div className="w-16 h-16 flex-shrink-0">
-                      {item.pic_url ? (
-                        <img 
-                          src={item.pic_url} 
-                          alt={item.item_title}
-                          className="w-full h-full rounded object-cover" 
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
-                          No img
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Details */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-900 dark:text-white line-clamp-1">
-                        {item.item_title}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
-                        {item.sku_title}
-                      </p>
-                      
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Qty: <span className="font-medium text-gray-900 dark:text-white">{item.quantity}</span>
-                        </span>
-                        <div className="text-right">
-                          {item.promotion_price_usd < item.price_usd && (
-                            <span className="text-xs text-gray-400 line-through mr-2">
-                              ${(item.price_usd * item.quantity).toFixed(2)}
-                            </span>
-                          )}
-                          <span className="font-semibold text-orange-600 dark:text-orange-500">
-                            ${item.subtotal_usd.toFixed(2)}
+              <div className="space-y-4">
+                {groupItemsByItemId(availableItems).map((skuGroup) => {
+                  const firstSku = skuGroup[0];
+                  const groupSubtotal = skuGroup.reduce((sum, sku) => sum + sku.subtotal_usd, 0);
+                  
+                  return (
+                    <div 
+                      key={firstSku.item_id}
+                      className="bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 overflow-hidden"
+                    >
+                      {/* Item Group Header */}
+                      <div className="p-3 bg-green-100 dark:bg-green-900/40 border-b border-green-200 dark:border-green-800">
+                        <div className="flex justify-between items-center">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white line-clamp-1">
+                            📦 {firstSku.item_title}
+                          </p>
+                          <span className="text-sm font-medium text-orange-600 dark:text-orange-500">
+                            Shipping: ${firstSku.shipping_fee_usd.toFixed(2)}
                           </span>
                         </div>
                       </div>
+                      
+                      {/* SKU Items */}
+                      <div className="p-2 space-y-2">
+                        {skuGroup.map((sku) => (
+                          <div 
+                            key={sku.sku_id}
+                            className="flex gap-3 p-2 bg-white dark:bg-gray-800/50 rounded border border-green-100 dark:border-green-800/50"
+                          >
+                            {/* Image */}
+                            <div className="w-12 h-12 flex-shrink-0">
+                              {sku.pic_url ? (
+                                <img 
+                                  src={sku.pic_url} 
+                                  alt={sku.item_title}
+                                  className="w-full h-full rounded object-cover" 
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
+                                  No img
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Details */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                                {sku.sku_title}
+                              </p>
+                              
+                              <div className="flex justify-between items-center mt-1">
+                                <span className="text-xs text-gray-600 dark:text-gray-400">
+                                  Qty: <span className="font-medium text-gray-900 dark:text-white">{sku.quantity}</span>
+                                </span>
+                                <div className="text-right">
+                                  {sku.promotion_price_usd < sku.price_usd && (
+                                    <span className="text-xs text-gray-400 line-through mr-1">
+                                      ${(sku.price_usd * sku.quantity).toFixed(2)}
+                                    </span>
+                                  )}
+                                  <span className="text-xs font-semibold text-orange-600 dark:text-orange-500">
+                                    ${sku.subtotal_usd.toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {/* Group Subtotal */}
+                        <div className="pt-2 border-t border-green-200 dark:border-green-800">
+                          <div className="flex justify-between items-center px-2">
+                            <span className="text-xs font-medium text-green-900 dark:text-green-300">
+                              Item Total ({skuGroup.length} {skuGroup.length === 1 ? 'SKU' : 'SKUs'})
+                            </span>
+                            <span className="text-sm font-bold text-green-900 dark:text-green-300">
+                              ${groupSubtotal.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               
               {/* Available Items Total */}
@@ -292,85 +374,108 @@ export function OrderSummaryDialog({
               <h3 className="font-semibold text-orange-700 dark:text-orange-400 mb-3 flex items-center gap-2">
                 ⚠️ Insufficient Stock ({insufficientStockItems.length})
               </h3>
-              <div className="space-y-3">
-                {insufficientStockItems.map((item) => {
-                  const adjustedQty = adjustedQuantities[item.sku_id];
-                  const currentQty = adjustedQty !== undefined ? adjustedQty : item.quantity;
+              <div className="space-y-4">
+                {groupItemsByItemId(insufficientStockItems).map((skuGroup) => {
+                  const firstSku = skuGroup[0];
                   
                   return (
                     <div 
-                      key={item.sku_id} 
-                      className="flex gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-300 dark:border-yellow-700"
+                      key={firstSku.item_id}
+                      className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-300 dark:border-yellow-700 overflow-hidden"
                     >
-                      {/* Image - slight opacity */}
-                      <div className="w-16 h-16 flex-shrink-0 opacity-80">
-                        {item.pic_url ? (
-                          <img 
-                            src={item.pic_url} 
-                            alt={item.item_title}
-                            className="w-full h-full rounded object-cover" 
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
-                            No img
-                          </div>
-                        )}
+                      {/* Item Group Header */}
+                      <div className="p-3 bg-yellow-100 dark:bg-yellow-900/40 border-b border-yellow-300 dark:border-yellow-700">
+                        <div className="flex justify-between items-center">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white line-clamp-1">
+                            📦 {firstSku.item_title}
+                          </p>
+                          <span className="text-sm font-medium text-orange-600 dark:text-orange-500">
+                            Shipping: ${firstSku.shipping_fee_usd.toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                       
-                      {/* Details */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 dark:text-white line-clamp-1">
-                          {item.item_title}
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
-                          {item.sku_title}
-                        </p>
-                        
-                        {/* Stock info - prominent display */}
-                        <div className="mt-2 flex items-center gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-500 dark:text-gray-400">Requested:</span>
-                            <span className="font-bold text-gray-900 dark:text-white ml-1">{item.quantity}</span>
-                          </div>
-                          <div>
-                            <span className="text-orange-600 dark:text-orange-400">Available:</span>
-                            <span className="font-bold text-orange-700 dark:text-orange-300 ml-1 text-lg">
-                              {item.available_quantity}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        {/* Warning message - simple & clear */}
-                        <div className="mt-2 p-2 bg-orange-100 dark:bg-orange-900/40 rounded">
-                          <p className="text-sm text-orange-800 dark:text-orange-300 font-medium">
-                            ⚠️ Only {item.available_quantity} available
-                          </p>
-                        </div>
+                      {/* SKU Items */}
+                      <div className="p-2 space-y-2">
+                        {skuGroup.map((sku) => {
+                          const adjustedQty = adjustedQuantities[sku.sku_id];
+                          const currentQty = adjustedQty !== undefined ? adjustedQty : sku.quantity;
+                          
+                          return (
+                            <div 
+                              key={sku.sku_id}
+                              className="flex gap-3 p-2 bg-white dark:bg-gray-800/50 rounded border border-yellow-100 dark:border-yellow-800/50"
+                            >
+                              {/* Image - slight opacity */}
+                              <div className="w-12 h-12 flex-shrink-0 opacity-80">
+                                {sku.pic_url ? (
+                                  <img 
+                                    src={sku.pic_url} 
+                                    alt={sku.item_title}
+                                    className="w-full h-full rounded object-cover" 
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
+                                    No img
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Details */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                                  {sku.sku_title}
+                                </p>
+                                
+                                {/* Stock info - prominent display */}
+                                <div className="mt-1 flex items-center gap-3 text-xs">
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">Requested:</span>
+                                    <span className="font-bold text-gray-900 dark:text-white ml-1">{sku.quantity}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-orange-600 dark:text-orange-400">Available:</span>
+                                    <span className="font-bold text-orange-700 dark:text-orange-300 ml-1">
+                                      {sku.available_quantity}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                {/* Warning message - simple & clear */}
+                                <div className="mt-1 p-1.5 bg-orange-100 dark:bg-orange-900/40 rounded">
+                                  <p className="text-xs text-orange-800 dark:text-orange-300 font-medium">
+                                    ⚠️ Only {sku.available_quantity} available
+                                  </p>
+                                </div>
 
-                        {/* Quantity Adjustment Controls */}
-                        <div className="mt-3 flex items-center gap-2 flex-wrap">
-                          <label className="text-sm text-gray-600 dark:text-gray-400">Adjust to:</label>
-                          <input 
-                            type="number"
-                            min="0"
-                            max={item.available_quantity!}
-                            value={currentQty}
-                            onChange={(e) => handleQuantityAdjust(item.sku_id, parseInt(e.target.value) || 0, item.available_quantity!)}
-                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                          />
-                          <span className="text-xs text-gray-500 dark:text-gray-400">max: {item.available_quantity}</span>
-                          <button
-                            onClick={() => handleQuickAdjust(item.sku_id, item.available_quantity!)}
-                            className="text-xs px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors font-medium"
-                          >
-                            Use Max
-                          </button>
-                          {adjustedQty === 0 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400 italic">
-                              (will be excluded from order)
-                            </span>
-                          )}
-                        </div>
+                                {/* Quantity Adjustment Controls */}
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  <label className="text-xs text-gray-600 dark:text-gray-400">Adjust to:</label>
+                                  <input 
+                                    type="number"
+                                    min="0"
+                                    max={sku.available_quantity!}
+                                    value={currentQty}
+                                    onChange={(e) => handleQuantityAdjust(sku.sku_id, parseInt(e.target.value) || 0, sku.available_quantity!)}
+                                    className="w-16 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded text-center bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs"
+                                  />
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">max: {sku.available_quantity}</span>
+                                  <button
+                                    onClick={() => handleQuickAdjust(sku.sku_id, sku.available_quantity!)}
+                                    className="text-xs px-2 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors font-medium"
+                                  >
+                                    Use Max
+                                  </button>
+                                  {adjustedQty === 0 && (
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 italic">
+                                      (will be excluded)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -385,54 +490,77 @@ export function OrderSummaryDialog({
               <h3 className="font-semibold text-red-700 dark:text-red-400 mb-3 flex items-center gap-2">
                 ✗ Unavailable Items ({unavailableItems.length})
               </h3>
-              <div className="space-y-3">
-                {unavailableItems.map((item) => (
-                  <div 
-                    key={item.sku_id} 
-                    className="flex gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800"
-                  >
-                    {/* Image - with opacity to show unavailable */}
-                    <div className="w-16 h-16 flex-shrink-0 opacity-60">
-                      {item.pic_url ? (
-                        <img 
-                          src={item.pic_url} 
-                          alt={item.item_title}
-                          className="w-full h-full rounded object-cover" 
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
-                          No img
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Details */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-900 dark:text-white line-clamp-1">
-                        {item.item_title}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
-                        {item.sku_title}
-                      </p>
-                      
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        Requested Qty: <span className="font-medium">{item.quantity}</span>
-                      </div>
-                      
-                      {/* Error Details */}
-                      <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/40 rounded">
-                        <p className="text-xs text-red-700 dark:text-red-300 font-medium">
-                          {item.unavailable_reason || 'Item unavailable'}
-                        </p>
-                        {item.error_code && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Error Code: {item.error_code}
+              <div className="space-y-4">
+                {groupItemsByItemId(unavailableItems).map((skuGroup) => {
+                  const firstSku = skuGroup[0];
+                  
+                  return (
+                    <div 
+                      key={firstSku.item_id}
+                      className="bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 overflow-hidden"
+                    >
+                      {/* Item Group Header */}
+                      <div className="p-3 bg-red-100 dark:bg-red-900/40 border-b border-red-200 dark:border-red-800">
+                        <div className="flex justify-between items-center">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white line-clamp-1">
+                            📦 {firstSku.item_title}
                           </p>
-                        )}
+                          <span className="text-sm font-medium text-orange-600 dark:text-orange-500">
+                            Shipping: ${firstSku.shipping_fee_usd.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* SKU Items */}
+                      <div className="p-2 space-y-2">
+                        {skuGroup.map((sku) => (
+                          <div 
+                            key={sku.sku_id}
+                            className="flex gap-3 p-2 bg-white dark:bg-gray-800/50 rounded border border-red-100 dark:border-red-800/50"
+                          >
+                            {/* Image - with opacity to show unavailable */}
+                            <div className="w-12 h-12 flex-shrink-0 opacity-60">
+                              {sku.pic_url ? (
+                                <img 
+                                  src={sku.pic_url} 
+                                  alt={sku.item_title}
+                                  className="w-full h-full rounded object-cover" 
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-xs">
+                                  No img
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Details */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                                {sku.sku_title}
+                              </p>
+                              
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Requested Qty: <span className="font-medium">{sku.quantity}</span>
+                              </div>
+                              
+                              {/* Error Details */}
+                              <div className="mt-1 p-1.5 bg-red-100 dark:bg-red-900/40 rounded">
+                                <p className="text-xs text-red-700 dark:text-red-300 font-medium">
+                                  {sku.unavailable_reason || 'Item unavailable'}
+                                </p>
+                                {sku.error_code && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    Error Code: {sku.error_code}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

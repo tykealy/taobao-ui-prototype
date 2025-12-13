@@ -297,14 +297,16 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     if (!orderSummaryData?.data?.items) return;
     
     // Only remove truly unavailable items (null or 0 stock), not insufficient stock items
+    // Flatten the nested SKU structure: items[].skus[][] -> flat array of SKUs
     const unavailableSkuIds = orderSummaryData.data.items
-      .filter((item: any) => 
-        !item.is_available && 
-        (item.available_quantity === null || 
-         item.available_quantity === undefined ||
-         item.available_quantity === 0)
+      .flatMap((item: any) => item.line_items.flat())
+      .filter((lineItem: any) => 
+        !lineItem.is_available && 
+        (lineItem.available_quantity === null || 
+         lineItem.available_quantity === undefined ||
+         lineItem.available_quantity === 0)
       )
-      .map((item: any) => item.sku_id);
+      .map((lineItem: any) => lineItem.sku_id);
     
     // Remove each unavailable item
     for (const skuId of unavailableSkuIds) {
