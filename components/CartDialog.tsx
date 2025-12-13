@@ -43,6 +43,8 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [orderSummaryData, setOrderSummaryData] = useState<any>(null);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
+  const [lastRenderedSkuIds, setLastRenderedSkuIds] = useState<string[]>([]);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, GroupedCartItem> = {};
@@ -225,6 +227,9 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     try {
       const selectedSkuIdArray = Array.from(selectedSkuIds);
       
+      // Track the SKU IDs used for render-order
+      setLastRenderedSkuIds(selectedSkuIdArray);
+      
       const headers: Record<string, string> = {
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
@@ -258,6 +263,9 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     setError('');
     
     try {
+      // Track the SKU IDs used for render-order
+      setLastRenderedSkuIds(skuIds);
+      
       const headers: Record<string, string> = {
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
@@ -286,11 +294,51 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     }
   };
 
-  const handleCreateOrder = () => {
-    // Placeholder for actual order creation API (to be implemented later)
-    alert('Create Order feature will be implemented next!');
-    setShowOrderSummary(false);
-    onClose();
+  const handleCreateOrder = async () => {
+    setIsCreatingOrder(true);
+    setError('');
+    
+    // Use the same sku_ids as the last render-order call, or fallback to selected SKUs
+    const skuIdsToOrder = lastRenderedSkuIds.length > 0 
+      ? lastRenderedSkuIds 
+      : Array.from(selectedSkuIds);
+    
+    if (skuIdsToOrder.length === 0) {
+      setError('No items selected for order');
+      setIsCreatingOrder(false);
+      return;
+    }
+    
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json'
+      };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+      const response = await fetch('http://localhost:3000/api/v1/taobao/order', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sku_ids: skuIdsToOrder })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok || data?.success === false) {
+        setError(data?.message || 'Failed to create order');
+        return;
+      }
+      
+      // Success: close dialogs and refresh cart
+      setShowOrderSummary(false);
+      fetchCart();
+      onClose();
+    } catch (err) {
+      setError('Failed to connect to order service');
+      console.error('Create order error:', err);
+    } finally {
+      setIsCreatingOrder(false);
+    }
   };
 
   const handleRemoveUnavailable = async () => {
@@ -557,6 +605,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
           onReCalculate={handleReCalculateOrder}
           apiKey={apiKey}
           authToken={authToken}
+          isCreatingOrder={isCreatingOrder}
         />
       )}
     </div>

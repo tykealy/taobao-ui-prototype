@@ -58,6 +58,7 @@ interface OrderSummaryDialogProps {
   onReCalculate: (skuIds: string[]) => Promise<void>;
   apiKey: string;
   authToken: string;
+  isCreatingOrder?: boolean;
 }
 
 export function OrderSummaryDialog({
@@ -69,6 +70,7 @@ export function OrderSummaryDialog({
   onReCalculate,
   apiKey,
   authToken,
+  isCreatingOrder = false,
 }: OrderSummaryDialogProps) {
   const [adjustedQuantities, setAdjustedQuantities] = useState<Record<string, number>>({});
   const [isRecalculating, setIsRecalculating] = useState(false);
@@ -620,9 +622,17 @@ export function OrderSummaryDialog({
           {availableItems.length > 0 && !hasAdjustments && insufficientStockItems.length === 0 && (
             <button
               onClick={onProceedToCreateOrder}
-              className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all"
+              disabled={isCreatingOrder}
+              className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Create Order ({availableItems.length} {availableItems.length === 1 ? 'item' : 'items'})
+              {isCreatingOrder ? (
+                <>
+                  <span className="animate-spin">⟳</span>
+                  <span>Creating Order...</span>
+                </>
+              ) : (
+                `Create Order (${availableItems.length} ${availableItems.length === 1 ? 'item' : 'items'})`
+              )}
             </button>
           )}
           
