@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { PaymentMethodsDialog } from './PaymentMethodsDialog';
 
 // TypeScript Interfaces
 interface OrderLineItem {
@@ -83,6 +84,30 @@ type OrderStatus = 'pending' | 'payment' | 'shipping' | 'completed' | 'cancelled
 type SortField = 'total' | 'status' | 'updated_at';
 type SortOrder = 'asc' | 'desc';
 
+interface PaymentMethod {
+  id: number;
+  code: string;
+  name: string;
+  type: string;
+  provider: string;
+  isActive: boolean;
+  supportedCurrencies: string[];
+  minAmount: string;
+  maxAmount: string;
+  processingFee: string;
+  processingFeePercent: string;
+  availableForOrders: boolean;
+  availableForTaobao: boolean;
+  icon: string;
+  description: string;
+  displayOrder: number;
+  organizationId: number;
+  gatewayConfig: Record<string, any>;
+  metadata: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface OrdersListDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -158,6 +183,13 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
   const [toDate, setToDate] = useState('');
   const [sortBy, setSortBy] = useState<SortField>('updated_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  // Payment states
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
 
   // Helper Functions
   const formatDate = (isoString: string): string => {
@@ -272,10 +304,48 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
   };
 
   // Action Handlers
-  const handlePayNow = (order: Order) => {
-    console.log('Pay now:', order.number);
-    alert(`Payment functionality for order ${order.number} would be implemented here.`);
-    // TODO: Navigate to payment page or open payment modal
+  const handlePayNow = async (order: Order) => {
+    setSelectedOrderForPayment(order);
+    setLoadingPaymentMethods(true);
+    setPaymentError('');
+    
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': apiKey,
+      };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      
+      const response = await fetch(
+        `http://localhost:3000/api/v1/taobao/orders/${order.number}/payment-methods`,
+        { headers }
+      );
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setPaymentMethods(data.data);
+        setShowPaymentDialog(true);
+      } else {
+        setPaymentError(data.message || 'Failed to load payment methods');
+        alert(`Error: ${data.message || 'Failed to load payment methods'}`);
+      }
+    } catch (err) {
+      setPaymentError('An error occurred while loading payment methods');
+      console.error('Payment methods fetch error:', err);
+      alert('An error occurred while loading payment methods');
+    } finally {
+      setLoadingPaymentMethods(false);
+    }
+  };
+
+  const handleSelectPaymentMethod = (method: any) => {
+    // For now, just show success message
+    alert(`✅ Payment method "${method.name}" selected successfully!\n\nPayment processing would happen here.`);
+    setShowPaymentDialog(false);
+    setSelectedOrderForPayment(null);
+    setPaymentError('');
+    // Optional: Refresh orders to show updated status
+    // fetchOrders(currentPage);
   };
 
   const handleCancelOrder = (order: Order) => {
@@ -750,6 +820,23 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
           </div>
         )}
       </div>
+
+      {/* Payment Methods Dialog */}
+      {showPaymentDialog && selectedOrderForPayment && (
+        <PaymentMethodsDialog
+          isOpen={showPaymentDialog}
+          onClose={() => {
+            setShowPaymentDialog(false);
+            setSelectedOrderForPayment(null);
+            setPaymentError('');
+          }}
+          orderNumber={selectedOrderForPayment.number}
+          orderTotal={selectedOrderForPayment.total}
+          paymentMethods={paymentMethods}
+          onSelectPaymentMethod={handleSelectPaymentMethod}
+          isProcessing={loadingPaymentMethods}
+        />
+      )}
     </div>
   );
 }
