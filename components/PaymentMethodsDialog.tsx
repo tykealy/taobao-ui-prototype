@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MobileDialog } from './MobileDialog';
 
 // TypeScript Interfaces
 interface PaymentMethod {
@@ -133,39 +134,91 @@ export function PaymentMethodsDialog({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
-        
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                💳 Select Payment Method
-              </h2>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Order: <span className="font-mono font-medium text-gray-900 dark:text-white">{orderNumber}</span>
-                </span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">•</span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Total: <span className="font-bold text-orange-600 dark:text-orange-500">{formatPrice(orderTotal)}</span>
-                </span>
-              </div>
+  // Custom header with order info
+  const paymentHeader = (
+    <div className="w-full">
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+        💳 Select Payment Method
+      </h2>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-gray-600 dark:text-gray-400">
+          Order: <span className="font-mono font-medium text-gray-900 dark:text-white">{orderNumber}</span>
+        </span>
+        <span className="text-gray-600 dark:text-gray-400">•</span>
+        <span className="text-gray-600 dark:text-gray-400">
+          Total: <span className="font-bold text-orange-600 dark:text-orange-500">{formatPrice(orderTotal)}</span>
+        </span>
+      </div>
+    </div>
+  );
+
+  // Custom footer with action buttons
+  const paymentFooter = (
+    <div className="space-y-2">
+      {/* Selected Method Summary */}
+      {selectedMethod && (
+        <div className="mb-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                Selected:
+              </span>
+              <span className="font-semibold text-blue-900 dark:text-blue-100">
+                {selectedMethod.name}
+              </span>
             </div>
-            <button 
-              onClick={onClose}
-              className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-              disabled={isProcessing}
-            >
-              ✕
-            </button>
+            {hasProcessingFee(selectedMethod) && (
+              <span className="text-xs text-blue-600 dark:text-blue-400">
+                Fee: {formatProcessingFee(selectedMethod)}
+              </span>
+            )}
           </div>
         </div>
+      )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={onClose}
+          disabled={isProcessing}
+          className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleProceedWithPayment}
+          disabled={!selectedMethod || isProcessing}
+          className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-bold rounded-lg shadow-lg active:scale-95 transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px]"
+        >
+          {isProcessing ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              <span>Processing...</span>
+            </>
+          ) : (
+            'Proceed with Payment'
+          )}
+        </button>
+      </div>
+
+      {/* Helper Text */}
+      {!selectedMethod && activePaymentMethods.length > 0 && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
+          Please select a payment method to continue
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <MobileDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title={paymentHeader}
+      footer={paymentFooter}
+      zIndex={70}
+    >
+      <div className="space-y-4">
           
           {/* Empty State */}
           {activePaymentMethods.length === 0 && (
@@ -197,6 +250,7 @@ export function PaymentMethodsDialog({
                       relative p-4 rounded-xl border-2 transition-all text-left
                       hover:shadow-lg active:scale-[0.98]
                       disabled:opacity-50 disabled:cursor-not-allowed
+                      min-h-[200px]
                       ${isSelected 
                         ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 shadow-md' 
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300 dark:hover:border-orange-700'
@@ -284,65 +338,6 @@ export function PaymentMethodsDialog({
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 space-y-2">
-          
-          {/* Selected Method Summary */}
-          {selectedMethod && (
-            <div className="mb-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-blue-700 dark:text-blue-300">
-                    Selected:
-                  </span>
-                  <span className="font-semibold text-blue-900 dark:text-blue-100">
-                    {selectedMethod.name}
-                  </span>
-                </div>
-                {hasProcessingFee(selectedMethod) && (
-                  <span className="text-xs text-blue-600 dark:text-blue-400">
-                    Fee: {formatProcessingFee(selectedMethod)}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              disabled={isProcessing}
-              className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleProceedWithPayment}
-              disabled={!selectedMethod || isProcessing}
-              className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isProcessing ? (
-                <>
-                  <span className="animate-spin">⟳</span>
-                  <span>Processing...</span>
-                </>
-              ) : (
-                'Proceed with Payment'
-              )}
-            </button>
-          </div>
-
-          {/* Helper Text */}
-          {!selectedMethod && activePaymentMethods.length > 0 && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-              Please select a payment method to continue
-            </p>
-          )}
-        </div>
-
-      </div>
-    </div>
+      </MobileDialog>
   );
 }

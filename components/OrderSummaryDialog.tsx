@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MobileDialog } from './MobileDialog';
 
 interface SKU {
   item_id: string;
@@ -216,30 +217,112 @@ export function OrderSummaryDialog({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
-        
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                Order Summary
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{getHeaderMessage()}</p>
-            </div>
-            <button 
-              onClick={onClose}
-              className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-            >
-              ✕
-            </button>
+  // Custom header with dynamic status message
+  const summaryHeader = (
+    <div className="w-full">
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+        📋 Order Summary
+      </h2>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{getHeaderMessage()}</p>
+    </div>
+  );
+
+  // Custom footer with all action buttons
+  const summaryFooter = (
+    <div className="space-y-2">
+      {/* Grand Total (only if available items exist and no pending adjustments) */}
+      {availableItems.length > 0 && !hasAdjustments && (
+        <div className="mb-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Items Subtotal</span>
+            <span className="font-medium text-gray-900 dark:text-white">${availableTotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Shipping Fee</span>
+            <span className="font-medium text-gray-900 dark:text-white">${summary.total_shipping_fee_usd.toFixed(2)}</span>
+          </div>
+          <div className="pt-2 border-t border-orange-300 dark:border-orange-700 flex justify-between items-center">
+            <span className="font-semibold text-gray-900 dark:text-white">Grand Total</span>
+            <span className="text-2xl font-bold text-orange-600 dark:text-orange-500">${grandTotal.toFixed(2)}</span>
           </div>
         </div>
+      )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Helper text if adjustments needed */}
+      {insufficientStockItems.length > 0 && !hasAdjustments && (
+        <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
+          Please adjust quantities above to proceed with order
+        </div>
+      )}
+
+      {/* Re-Calculate Button (if adjustments made) */}
+      {hasAdjustments && (
+        <button 
+          onClick={handleReCalculate}
+          disabled={isRecalculating}
+          className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold rounded-lg shadow-lg active:scale-95 transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px]"
+        >
+          {isRecalculating ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              <span>Re-Calculating...</span>
+            </>
+          ) : (
+            <>
+              <span>🔄</span>
+              <span>Re-Calculate Order</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Create Order Button (only if no adjustments pending and has available items) */}
+      {availableItems.length > 0 && !hasAdjustments && insufficientStockItems.length === 0 && (
+        <button
+          onClick={onProceedToCreateOrder}
+          disabled={isCreatingOrder}
+          className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold rounded-lg shadow-lg active:scale-95 transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px]"
+        >
+          {isCreatingOrder ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              <span>Creating Order...</span>
+            </>
+          ) : (
+            `Create Order (${availableItems.length} ${availableItems.length === 1 ? 'item' : 'items'})`
+          )}
+        </button>
+      )}
+      
+      {/* Remove Unavailable Button (only truly unavailable items) */}
+      {unavailableItems.length > 0 && (
+        <button
+          onClick={onRemoveUnavailable}
+          className="w-full py-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-medium rounded-lg transition-all active:scale-95 min-h-[44px]"
+        >
+          Remove Unavailable ({unavailableItems.length} {unavailableItems.length === 1 ? 'item' : 'items'})
+        </button>
+      )}
+      
+      {/* Back to Cart Button */}
+      <button
+        onClick={onClose}
+        className="w-full py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-all active:scale-95 min-h-[44px]"
+      >
+        Back to Cart
+      </button>
+    </div>
+  );
+
+  return (
+    <MobileDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title={summaryHeader}
+      footer={summaryFooter}
+      zIndex={60}
+    >
+      <div className="space-y-4">
           
           {/* Summary Stats Card - 4 Categories */}
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -542,7 +625,7 @@ export function OrderSummaryDialog({
                                           <span className="text-xs text-gray-500 dark:text-gray-400">max: {sku.available_quantity}</span>
                                           <button
                                             onClick={() => handleQuickAdjust(sku.sku_id, sku.available_quantity!)}
-                                            className="text-xs px-2 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors font-medium"
+                                            className="text-xs px-3 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 active:scale-95 transition-all font-medium min-h-[44px]"
                                           >
                                             Use Max
                                           </button>
@@ -675,94 +758,6 @@ export function OrderSummaryDialog({
           )}
 
         </div>
-
-        {/* Footer with Actions */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 space-y-2">
-          
-          {/* Grand Total (only if available items exist and no pending adjustments) */}
-          {availableItems.length > 0 && !hasAdjustments && (
-            <div className="mb-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Items Subtotal</span>
-                <span className="font-medium text-gray-900 dark:text-white">${availableTotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Shipping Fee</span>
-                <span className="font-medium text-gray-900 dark:text-white">${summary.total_shipping_fee_usd.toFixed(2)}</span>
-              </div>
-              <div className="pt-2 border-t border-orange-300 dark:border-orange-700 flex justify-between items-center">
-                <span className="font-semibold text-gray-900 dark:text-white">Grand Total</span>
-                <span className="text-2xl font-bold text-orange-600 dark:text-orange-500">${grandTotal.toFixed(2)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Helper text if adjustments needed */}
-          {insufficientStockItems.length > 0 && !hasAdjustments && (
-            <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
-              Please adjust quantities above to proceed with order
-            </div>
-          )}
-
-          {/* Re-Calculate Button (if adjustments made) */}
-          {hasAdjustments && (
-            <button 
-              onClick={handleReCalculate}
-              disabled={isRecalculating}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isRecalculating ? (
-                <>
-                  <span className="animate-spin">⟳</span>
-                  <span>Re-Calculating...</span>
-                </>
-              ) : (
-                <>
-                  <span>🔄</span>
-                  <span>Re-Calculate Order</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Create Order Button (only if no adjustments pending and has available items) */}
-          {availableItems.length > 0 && !hasAdjustments && insufficientStockItems.length === 0 && (
-            <button
-              onClick={onProceedToCreateOrder}
-              disabled={isCreatingOrder}
-              className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isCreatingOrder ? (
-                <>
-                  <span className="animate-spin">⟳</span>
-                  <span>Creating Order...</span>
-                </>
-              ) : (
-                `Create Order (${availableItems.length} ${availableItems.length === 1 ? 'item' : 'items'})`
-              )}
-            </button>
-          )}
-          
-          {/* Remove Unavailable Button (only truly unavailable items) */}
-          {unavailableItems.length > 0 && (
-            <button
-              onClick={onRemoveUnavailable}
-              className="w-full py-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-medium rounded-lg transition-colors"
-            >
-              Remove Unavailable ({unavailableItems.length} {unavailableItems.length === 1 ? 'item' : 'items'})
-            </button>
-          )}
-          
-          {/* Back to Cart Button */}
-          <button
-            onClick={onClose}
-            className="w-full py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-colors"
-          >
-            Back to Cart
-          </button>
-        </div>
-
-      </div>
-    </div>
+      </MobileDialog>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { MobileDialog } from './MobileDialog';
 import { OrderSummaryDialog } from './OrderSummaryDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
 
@@ -491,41 +492,79 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     .filter(item => selectedSkuIds.has(item.skuId))
     .reduce((sum, item) => sum + ((parseFloat(item.promotionPrice) || 0) * item.quantity), 0);
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-        
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-          <div className="flex items-center gap-3">
-            <input 
-              type="checkbox"
-              checked={selectedSkuIds.size === items.length && items.length > 0}
-              onChange={() => selectedSkuIds.size === items.length ? handleDeselectAll() : handleSelectAll()}
-              className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 cursor-pointer"
-              title={selectedSkuIds.size === items.length ? 'Deselect all' : 'Select all'}
-            />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                🛒 Shopping Cart
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {selectedSkuIds.size} of {items.length} selected
-              </p>
+    <>
+      <MobileDialog
+        isOpen={isOpen}
+        onClose={onClose}
+        title={
+        <div className="flex items-center gap-3 w-full -ml-1">
+          <input 
+            type="checkbox"
+            checked={selectedSkuIds.size === items.length && items.length > 0}
+            onChange={() => selectedSkuIds.size === items.length ? handleDeselectAll() : handleSelectAll()}
+            className="
+              w-6 h-6 sm:w-5 sm:h-5 
+              rounded border-gray-300 dark:border-gray-600 
+              cursor-pointer
+              min-w-[24px] min-h-[24px]
+              active:scale-95 transition-transform
+            "
+            title={selectedSkuIds.size === items.length ? 'Deselect all' : 'Select all'}
+          />
+          <div className="flex-1">
+            <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              🛒 Shopping Cart
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-normal">
+              {selectedSkuIds.size} of {items.length} selected
+            </p>
           </div>
+        </div>
+      }
+      footer={
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-gray-600 dark:text-gray-400 font-medium">
+              {selectedSkuIds.size > 0 ? 'Selected Items Total' : 'Total'}
+            </span>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+              ${(selectedSkuIds.size > 0 ? selectedTotal : total).toFixed(2)}
+            </span>
+          </div>
+          {selectedSkuIds.size > 0 && selectedTotal !== total && (
+            <div className="flex justify-between items-center mb-4 text-sm">
+              <span className="text-gray-500 dark:text-gray-400">Cart Total</span>
+              <span className="text-gray-500 dark:text-gray-400">${total.toFixed(2)}</span>
+            </div>
+          )}
           <button 
-            onClick={onClose}
-            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
+            onClick={handleProceedToCheckout}
+            className="
+              w-full py-3 
+              bg-orange-600 hover:bg-orange-700 
+              text-white font-bold 
+              rounded-lg shadow-lg 
+              active:scale-[0.98] transition-all 
+              disabled:opacity-50 disabled:cursor-not-allowed 
+              relative
+              min-h-[44px]
+            "
+            disabled={selectedSkuIds.size === 0 || isCheckoutLoading}
           >
-            ✕
+            {isCheckoutLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="opacity-70">Validating...</span>
+                <span className="animate-spin">⟳</span>
+              </span>
+            ) : (
+              `Proceed to Checkout${selectedSkuIds.size > 0 ? ` (${selectedSkuIds.size} ${selectedSkuIds.size === 1 ? 'item' : 'items'})` : ''}`
+            )}
           </button>
         </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      }
+    >
+      <div className="p-4 space-y-4">
           {error && (
             <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">
               {error}
@@ -659,39 +698,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
             ))
           )}
         </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-            <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-600 dark:text-gray-400 font-medium">
-                  {selectedSkuIds.size > 0 ? 'Selected Items Total' : 'Total'}
-                </span>
-                <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${(selectedSkuIds.size > 0 ? selectedTotal : total).toFixed(2)}
-                </span>
-            </div>
-            {selectedSkuIds.size > 0 && selectedTotal !== total && (
-              <div className="flex justify-between items-center mb-4 text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Cart Total</span>
-                <span className="text-gray-500 dark:text-gray-400">${total.toFixed(2)}</span>
-              </div>
-            )}
-            <button 
-                onClick={handleProceedToCheckout}
-                className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed relative"
-                disabled={selectedSkuIds.size === 0 || isCheckoutLoading}
-            >
-                {isCheckoutLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="opacity-70">Validating...</span>
-                    <span className="animate-spin">⟳</span>
-                  </span>
-                ) : (
-                  `Proceed to Checkout${selectedSkuIds.size > 0 ? ` (${selectedSkuIds.size} ${selectedSkuIds.size === 1 ? 'item' : 'items'})` : ''}`
-                )}
-            </button>
-        </div>
-      </div>
+      </MobileDialog>
 
       {/* Order Summary Dialog */}
       {showOrderSummary && orderSummaryData && (
@@ -726,6 +733,6 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         onSelectPaymentMethod={handleSelectPaymentMethod}
         isProcessing={isProcessingPayment}
       />
-    </div>
+    </>
   );
 }

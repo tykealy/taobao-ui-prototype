@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas192" width="192" height="192"></canvas>
+    <canvas id="canvas512" width="512" height="512"></canvas>
+    <canvas id="canvasMaskable192" width="192" height="192"></canvas>
+    <canvas id="canvasMaskable512" width="512" height="512"></canvas>
+    
+    <script>
+        function generateIcon(canvas, size, isMaskable) {
+            const ctx = canvas.getContext('2d');
+            
+            // Create gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#f97316');  // orange-500
+            gradient.addColorStop(1, '#fb923c');  // orange-400
+            
+            // Fill background
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Add shopping bag emoji
+            ctx.font = `${size * 0.5}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🛍️', size / 2, size / 2);
+        }
+        
+        // Generate all icons
+        generateIcon(document.getElementById('canvas192'), 192, false);
+        generateIcon(document.getElementById('canvas512'), 512, false);
+        generateIcon(document.getElementById('canvasMaskable192'), 192, true);
+        generateIcon(document.getElementById('canvasMaskable512'), 512, true);
+        
+        // Download function
+        function download(canvas, filename) {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+            });
+        }
+        
+        console.log('Icons generated! Right-click each canvas to save as PNG');
+    </script>
+</body>
+</html>

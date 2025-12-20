@@ -337,6 +337,76 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Mobile Search - Sticky at top */}
+      <div className="sm:hidden sticky top-[52px] z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md safe-top">
+        <div className="p-3">
+          {/* API Key Input (Mobile) */}
+          {showApiKeyInput && (
+            <div className="mb-3 p-3 bg-orange-50 dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-gray-700">
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="X-API-Key"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                />
+                <input
+                  type="password"
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder="Bearer Token (optional)"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                />
+                <button
+                  onClick={() => saveApiKey(apiKey, authToken)}
+                  disabled={!apiKey}
+                  className="w-full px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px]"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Search Form (Mobile) */}
+          <form onSubmit={handleSearch}>
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="Search or paste link..."
+                  className="w-full px-4 py-2.5 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
+                />
+                {/* Paste button for mobile */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      setKeyword(text);
+                    } catch (err) {
+                      console.error('Failed to read clipboard:', err);
+                    }
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  📋
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={loading || !keyword.trim() || !apiKey || isNavigating}
+                className="px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold shadow-md text-sm min-h-[44px]"
+              >
+                {isNavigating ? '...' : loading && items.length === 0 ? '...' : '🔍'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       {/* Desktop Search */}
       <div className="hidden sm:block sticky top-[52px] sm:top-[60px] z-40 bg-white dark:bg-gray-900 shadow-md">
@@ -395,7 +465,7 @@ export default function Home() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto pb-24 sm:pb-8 px-0 sm:px-4 lg:px-6 pt-4">
+      <main className="max-w-7xl mx-auto pb-8 px-0 sm:px-4 lg:px-6 pt-4">
 
         {/* Error Message */}
         {error && (
@@ -549,78 +619,6 @@ export default function Home() {
           </div>
         )}
       </main>
-
-      {/* Mobile Bottom Sticky Search Bar */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg z-50 safe-area-inset-bottom">
-        <div className="p-3">
-          {/* API Key Input (Mobile) */}
-          {showApiKeyInput && (
-            <div className="mb-3 p-3 bg-orange-50 dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-gray-700">
-              <div className="space-y-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="X-API-Key"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
-                />
-                <input
-                  type="password"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="Bearer Token (optional)"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
-                />
-                <button
-                  onClick={() => saveApiKey(apiKey, authToken)}
-                  disabled={!apiKey}
-                  className="w-full px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px]"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {/* Search Form (Mobile) */}
-          <form onSubmit={handleSearch}>
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Search or paste link..."
-                  className="w-full px-4 py-2.5 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
-                />
-                {/* Paste button for mobile */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      setKeyword(text);
-                    } catch (err) {
-                      console.error('Failed to read clipboard:', err);
-                    }
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-lg hover:opacity-70 transition-opacity"
-                  aria-label="Paste from clipboard"
-                >
-                  📋
-                </button>
-              </div>
-              <button
-                type="submit"
-                disabled={loading || !keyword.trim() || !apiKey || isNavigating}
-                className="px-5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all font-semibold text-sm shadow-md min-h-[44px] min-w-[70px]"
-              >
-                {isNavigating ? '...' : loading && items.length === 0 ? '...' : 'Search'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
     </div>
   );
 }

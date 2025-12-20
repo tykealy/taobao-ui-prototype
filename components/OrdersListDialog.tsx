@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { MobileDialog } from './MobileDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
 
 // TypeScript Interfaces
@@ -451,60 +452,126 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
     return actions;
   };
 
-  if (!isOpen) return null;
-
   const hasActiveFilters = selectedStatus || fromDate || toDate || sortBy !== 'updated_at' || sortOrder !== 'desc';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
-        
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                📦 My Orders
-              </h2>
-              {pagination && (
-                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium">
-                  {pagination.total} total
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors disabled:opacity-50"
-                title="Refresh orders"
-              >
-                <span className={loading ? 'inline-block animate-spin' : ''}>🔄</span>
-              </button>
-              <button 
-                onClick={onClose}
-                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+  // Custom header with refresh button and count badge
+  const ordersHeader = (
+    <div className="flex items-center gap-2 w-full">
+      <div className="flex-1 flex items-center gap-2">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          📦 My Orders
+        </h2>
+        {pagination && (
+          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium">
+            {pagination.total}
+          </span>
+        )}
+      </div>
+      <button
+        onClick={handleRefresh}
+        disabled={loading}
+        className="
+          p-2 -m-2
+          hover:bg-gray-200 dark:hover:bg-gray-700
+          active:scale-95
+          rounded-full
+          transition-all
+          disabled:opacity-50
+          min-w-[44px] min-h-[44px]
+          flex items-center justify-center
+        "
+        title="Refresh orders"
+      >
+        <span className={loading ? 'inline-block animate-spin' : ''}>🔄</span>
+      </button>
+    </div>
+  );
 
+  // Custom footer with pagination
+  const ordersFooter = pagination && pagination.total_pages > 0 ? (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          Page {pagination.page} of {pagination.total_pages}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={!pagination.has_prev || loading}
+            className="
+              px-4 py-2 
+              bg-white dark:bg-gray-800 
+              border border-gray-300 dark:border-gray-600 
+              rounded-lg 
+              hover:bg-gray-50 dark:hover:bg-gray-700 
+              active:scale-95
+              disabled:opacity-50 disabled:cursor-not-allowed 
+              transition-all 
+              text-sm font-medium 
+              text-gray-700 dark:text-gray-300
+              min-h-[44px]
+            "
+          >
+            ← Prev
+          </button>
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={!pagination.has_next || loading}
+            className="
+              px-4 py-2 
+              bg-white dark:bg-gray-800 
+              border border-gray-300 dark:border-gray-600 
+              rounded-lg 
+              hover:bg-gray-50 dark:hover:bg-gray-700 
+              active:scale-95
+              disabled:opacity-50 disabled:cursor-not-allowed 
+              transition-all 
+              text-sm font-medium 
+              text-gray-700 dark:text-gray-300
+              min-h-[44px]
+            "
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : undefined;
+
+  return (
+    <>
+      <MobileDialog
+        isOpen={isOpen}
+        onClose={onClose}
+        title={ordersHeader}
+        footer={ordersFooter}
+        zIndex={50}
+      >
+        <div className="space-y-4">
           {/* Filters Toggle Button */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="mt-3 w-full flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="
+              w-full flex items-center justify-between 
+              px-4 py-3
+              bg-white dark:bg-gray-800 
+              border border-gray-300 dark:border-gray-600 
+              rounded-lg 
+              hover:bg-gray-50 dark:hover:bg-gray-700 
+              active:scale-[0.98]
+              transition-all
+              min-h-[44px]
+            "
           >
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               🔍 Filters {hasActiveFilters && '(active)'}
             </span>
             <span className="text-gray-500">{showFilters ? '▼' : '▶'}</span>
           </button>
-        </div>
 
-        {/* Filters Panel */}
-        {showFilters && (
-          <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3">
+          {/* Filters Panel */}
+          {showFilters && (
+            <div className="p-4 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 rounded-lg space-y-3">
             {/* Status Filter */}
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -600,8 +667,6 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
           </div>
         )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Error Message */}
           {error && (
             <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm">
@@ -648,7 +713,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
                 {/* Order Card Header (Clickable) */}
                 <button
                   onClick={() => toggleOrder(order.id)}
-                  className="w-full p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/70 transition-colors text-left"
+                  className="w-full p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/70 active:scale-[0.99] transition-all text-left min-h-[44px]"
                 >
                   <div className="flex items-start gap-3">
                     {/* Expand Icon */}
@@ -819,7 +884,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
                           <button
                             key={index}
                             onClick={action.onClick}
-                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${action.className}`}
+                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all active:scale-95 min-h-[44px] ${action.className}`}
                           >
                             {action.icon} {action.label}
                           </button>
@@ -832,37 +897,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
             );
           })}
         </div>
-
-        {/* Footer - Pagination */}
-        {pagination && pagination.total_pages > 0 && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              {/* Page Info */}
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Page {pagination.page} of {pagination.total_pages} • {pagination.total} total {pagination.total === 1 ? 'order' : 'orders'}
-              </div>
-
-              {/* Navigation Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={!pagination.has_prev || loading}
-                  className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  ← Previous
-                </button>
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={!pagination.has_next || loading}
-                  className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      </MobileDialog>
 
       {/* Payment Methods Dialog */}
       {showPaymentDialog && selectedOrderForPayment && (
@@ -880,6 +915,6 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
           isProcessing={loadingPaymentMethods || isProcessingPayment}
         />
       )}
-    </div>
+    </>
   );
 }
