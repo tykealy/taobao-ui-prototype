@@ -104,6 +104,7 @@ function formatPrice(item: ProductData) {
 
 
 import { CartDialog } from '@/components/CartDialog';
+import { OrdersListDialog } from '@/components/OrdersListDialog';
 
 // ... existing interfaces ...
 
@@ -118,6 +119,7 @@ export default function Home() {
   const [authToken, setAuthToken] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   
   const router = useRouter();
@@ -295,6 +297,12 @@ export default function Home() {
         apiKey={apiKey}
         authToken={authToken}
       />
+      <OrdersListDialog
+        isOpen={isOrdersOpen}
+        onClose={() => setIsOrdersOpen(false)}
+        apiKey={apiKey}
+        authToken={authToken}
+      />
       {/* Simple Header */}
       <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
@@ -311,6 +319,12 @@ export default function Home() {
                 className="px-3 py-2 text-xs sm:text-sm font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 transition-colors flex items-center gap-1"
                 >
                 🛒 Cart
+                </button>
+                <button
+                onClick={() => setIsOrdersOpen(true)}
+                className="px-3 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1"
+                >
+                📦 Orders
                 </button>
                 <button
                 onClick={() => setShowApiKeyInput(!showApiKeyInput)}

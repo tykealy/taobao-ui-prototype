@@ -316,7 +316,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
       };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const response = await fetch('http://localhost:3000/api/v1/taobao/order', {
+      const response = await fetch('http://localhost:3000/api/v1/taobao/orders', {
         method: 'POST',
         headers,
         body: JSON.stringify({ sku_ids: skuIdsToOrder })
