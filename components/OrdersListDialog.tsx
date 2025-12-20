@@ -189,6 +189,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
   // Helper Functions
@@ -338,14 +339,56 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
     }
   };
 
-  const handleSelectPaymentMethod = (method: any) => {
-    // For now, just show success message
-    alert(`✅ Payment method "${method.name}" selected successfully!\n\nPayment processing would happen here.`);
-    setShowPaymentDialog(false);
-    setSelectedOrderForPayment(null);
+  const handleSelectPaymentMethod = async (method: any) => {
+    if (!selectedOrderForPayment) return;
+    
+    setIsProcessingPayment(true);
     setPaymentError('');
-    // Optional: Refresh orders to show updated status
-    // fetchOrders(currentPage);
+    
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json'
+      };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      
+      const response = await fetch(
+        `http://localhost:3000/api/v1/taobao/orders/${selectedOrderForPayment.number}/payment`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ payment_method_id: method.id })
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (!response.ok || data?.success === false) {
+        setPaymentError(data?.message || 'Failed to create payment');
+        alert(`Error: ${data.message || 'Failed to create payment'}`);
+        return;
+      }
+      
+      // Success: Show simple success message
+      const payment = data.data.payment;
+      const order = data.data.order;
+      alert(`✅ Payment Created Successfully!\n\nOrder: ${order.number}\nTransaction ID: ${payment.transactionId}\nAmount: $${order.total}\nStatus: ${payment.status}`);
+      
+      // Close payment dialog
+      setShowPaymentDialog(false);
+      setSelectedOrderForPayment(null);
+      setPaymentError('');
+      
+      // Refresh orders list to show updated status
+      fetchOrders(currentPage);
+      
+    } catch (err) {
+      setPaymentError('Failed to connect to payment service');
+      console.error('Create payment error:', err);
+      alert('Failed to connect to payment service');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const handleCancelOrder = (order: Order) => {
@@ -834,7 +877,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
           orderTotal={selectedOrderForPayment.total}
           paymentMethods={paymentMethods}
           onSelectPaymentMethod={handleSelectPaymentMethod}
-          isProcessing={loadingPaymentMethods}
+          isProcessing={loadingPaymentMethods || isProcessingPayment}
         />
       )}
     </div>

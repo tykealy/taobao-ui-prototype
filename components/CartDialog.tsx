@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { OrderSummaryDialog } from './OrderSummaryDialog';
+import { PaymentMethodsDialog } from './PaymentMethodsDialog';
 
 interface CartItem {
   id: string;
@@ -45,6 +46,14 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   const [showOrderSummary, setShowOrderSummary] = useState(false);
   const [lastRenderedSkuIds, setLastRenderedSkuIds] = useState<string[]>([]);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  
+  // Payment flow state
+  const [createdOrder, setCreatedOrder] = useState<any>(null);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, GroupedCartItem> = {};
@@ -329,10 +338,15 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         return;
       }
       
-      // Success: close dialogs and refresh cart
+      // Success: extract order data and proceed to payment
+      const orderData = data.data.order;
+      setCreatedOrder(orderData);
+      
+      // Close order summary dialog
       setShowOrderSummary(false);
-      fetchCart();
-      onClose();
+      
+      // Fetch payment methods for the newly created order
+      await fetchPaymentMethods(orderData.number);
     } catch (err) {
       setError('Failed to connect to order service');
       console.error('Create order error:', err);
@@ -385,6 +399,91 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
       unavailableSkuIds.forEach((id: string) => next.delete(id));
       return next;
     });
+  };
+
+  const fetchPaymentMethods = async (orderNumber: string) => {
+    setLoadingPaymentMethods(true);
+    setPaymentError('');
+    
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': apiKey,
+      };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      
+      const response = await fetch(
+        `http://localhost:3000/api/v1/taobao/orders/${orderNumber}/payment-methods`,
+        { headers }
+      );
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setPaymentMethods(data.data);
+        setShowPaymentDialog(true);
+      } else {
+        setPaymentError(data.message || 'Failed to load payment methods');
+        alert(`Error: ${data.message || 'Failed to load payment methods'}`);
+      }
+    } catch (err) {
+      setPaymentError('An error occurred while loading payment methods');
+      console.error('Payment methods fetch error:', err);
+      alert('An error occurred while loading payment methods');
+    } finally {
+      setLoadingPaymentMethods(false);
+    }
+  };
+
+  const handleSelectPaymentMethod = async (method: any) => {
+    if (!createdOrder) return;
+    
+    setIsProcessingPayment(true);
+    setPaymentError('');
+    
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json'
+      };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      
+      const response = await fetch(
+        `http://localhost:3000/api/v1/taobao/orders/${createdOrder.number}/payment`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ payment_method_id: method.id })
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (!response.ok || data?.success === false) {
+        setPaymentError(data?.message || 'Failed to create payment');
+        alert(`Error: ${data.message || 'Failed to create payment'}`);
+        return;
+      }
+      
+      // Success: Show simple success message
+      const payment = data.data.payment;
+      const order = data.data.order;
+      alert(`✅ Payment Created Successfully!\n\nOrder: ${order.number}\nTransaction ID: ${payment.transactionId}\nAmount: $${order.total}\nStatus: ${payment.status}`);
+      
+      // Close all dialogs
+      setShowPaymentDialog(false);
+      setCreatedOrder(null);
+      onClose();
+      
+      // Refresh cart (backend handles item removal)
+      fetchCart();
+      
+    } catch (err) {
+      setPaymentError('Failed to connect to payment service');
+      console.error('Create payment error:', err);
+      alert('Failed to connect to payment service');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const total = items.reduce((sum, item) => sum + ((parseFloat(item.promotionPrice) || 0) * item.quantity), 0);
@@ -608,6 +707,25 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
           isCreatingOrder={isCreatingOrder}
         />
       )}
+
+      {/* Payment Methods Dialog */}
+      <PaymentMethodsDialog
+        isOpen={showPaymentDialog}
+        onClose={() => {
+          setShowPaymentDialog(false);
+          setCreatedOrder(null);
+          setPaymentError('');
+          // User cancelled payment - close cart dialog too
+          onClose();
+          // Refresh cart in case backend made changes
+          fetchCart();
+        }}
+        orderNumber={createdOrder?.number || ''}
+        orderTotal={createdOrder?.total || '0'}
+        paymentMethods={paymentMethods}
+        onSelectPaymentMethod={handleSelectPaymentMethod}
+        isProcessing={isProcessingPayment}
+      />
     </div>
   );
 }
