@@ -28,6 +28,7 @@ export default function ProductDetailPage() {
       image?: string;
       availableSkus: any[];
     }>;
+    showImages?: boolean;
   }>>([]);
   const [hasSkuProperties, setHasSkuProperties] = useState(true);
   const [showQuantityModal, setShowQuantityModal] = useState(false);
@@ -144,6 +145,30 @@ export default function ProductDetailPage() {
       }>;
     }>();
 
+    // Build property image map from property_image_list
+    // Maps "prop_id:value_id" -> image_url
+    const propertyImageMap = new Map<string, string>();
+    
+    product.property_image_list?.forEach((item: any) => {
+      if (!item.properties || !item.image_url) return;
+      
+      const propertyPairs = item.properties.split(';');
+      
+      if (propertyPairs.length === 1) {
+        // Single property - always use it (highest priority)
+        const key = propertyPairs[0].trim();
+        if (key) {
+          propertyImageMap.set(key, item.image_url);
+        }
+      } else if (propertyPairs.length > 1) {
+        // Multiple properties - only use first property, and only if not already set
+        const firstPair = propertyPairs[0].trim();
+        if (firstPair && !propertyImageMap.has(firstPair)) {
+          propertyImageMap.set(firstPair, item.image_url);
+        }
+      }
+    });
+
     // Process each SKU and its properties
     product.sku_list.forEach((sku: any) => {
       // Use multi-language properties if available
@@ -166,10 +191,14 @@ export default function ProductDetailPage() {
         
         // Initialize option if it doesn't exist
         if (!group.options.has(prop.value_name)) {
+          // Look up property-specific image from property_image_list
+          const imageKey = `${prop.prop_id}:${prop.value_id}`;
+          const propertyImage = propertyImageMap.get(imageKey);
+          
           group.options.set(prop.value_name, {
             valueName: prop.value_name,
             valueId: prop.value_id,
-            image: sku.pic_url,
+            image: propertyImage || sku.pic_url, // Prioritize property image, fallback to SKU image
             availableSkus: []
           });
         }
@@ -181,11 +210,21 @@ export default function ProductDetailPage() {
 
     // Convert to array format and sort by number of options (ascending)
     const propertyGroupsArray = Array.from(groups.values())
-      .map(group => ({
-        propName: group.propName,
-        propId: group.propId,
-        options: Array.from(group.options.values())
-      }))
+      .map(group => {
+        const options = Array.from(group.options.values());
+        
+        // Check if this property has unique images for different options
+        const imagesAvailable = options.filter(opt => opt.image).length;
+        const uniqueImages = new Set(options.map(opt => opt.image).filter(Boolean));
+        const hasVisualDifferences = imagesAvailable > 0 && uniqueImages.size > 1;
+        
+        return {
+          propName: group.propName,
+          propId: group.propId,
+          options: options,
+          showImages: hasVisualDifferences
+        };
+      })
       .sort((a, b) => a.options.length - b.options.length); // Render props with fewer options first
 
     setPropertyGroups(propertyGroupsArray);
@@ -748,7 +787,7 @@ export default function ProductDetailPage() {
                   
                   {propertyGroups.map((group, groupIdx) => (
                     <div key={groupIdx} className="space-y-3">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label className="block text-base font-bold text-gray-900 dark:text-white">
                         {group.propName}
                       </label>
                       <div className="flex gap-2 flex-wrap">
@@ -762,7 +801,11 @@ export default function ProductDetailPage() {
                               onClick={() => handlePropertySelect(group.propName, option.valueName)}
                               disabled={!isAvailable}
                               className={`
-                                px-5 py-3 rounded-lg border-2 transition-all min-w-[80px] text-center text-sm
+                                ${group.showImages 
+                                  ? 'flex flex-row items-center gap-3 p-3 min-w-[120px]'
+                                  : 'px-5 py-3 min-w-[80px]'
+                                }
+                                rounded-lg border-2 transition-all text-sm
                                 ${isSelected 
                                   ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-500 font-bold text-orange-600 dark:text-orange-400' 
                                   : isAvailable
@@ -771,7 +814,18 @@ export default function ProductDetailPage() {
                                 }
                               `}
                             >
-                              {option.valueName}
+                              {group.showImages && option.image ? (
+                                <>
+                                  <img 
+                                    src={option.image} 
+                                    alt={option.valueName}
+                                    className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-md border border-gray-200 dark:border-gray-700 flex-shrink-0"
+                                  />
+                                  <span className="text-xs sm:text-sm font-medium text-left">{option.valueName}</span>
+                                </>
+                              ) : (
+                                <span>{option.valueName}</span>
+                              )}
                             </button>
                           );
                         })}
