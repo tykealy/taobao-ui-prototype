@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MobileDialog } from './MobileDialog';
 import { OrderSummaryDialog } from './OrderSummaryDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
+import { getAccessToken } from '@/lib/auth-service';
 
 interface CartItem {
   id: string;
@@ -33,10 +34,9 @@ interface CartDialogProps {
   isOpen: boolean;
   onClose: () => void;
   apiKey: string;
-  authToken: string;
 }
 
-export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogProps) {
+export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -80,7 +80,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
   }, [items]);
 
   const fetchCart = useCallback(async () => {
-    console.log('🛒 fetchCart called', { apiKey: apiKey ? 'exists' : 'missing', authToken: authToken ? 'exists' : 'missing' });
+    console.log('🛒 fetchCart called', { apiKey: apiKey ? 'exists' : 'missing' });
     
     if (!apiKey) {
       console.log('❌ No API key found');
@@ -93,10 +93,11 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     setError('');
     try {
       const headers: Record<string, string> = { 'X-API-Key': apiKey };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-      console.log('📡 Fetching cart from http://localhost:3000/api/v1/taobao/cart with headers:', headers);
-      const res = await fetch('http://localhost:3000/api/v1/taobao/cart', { headers });
+      console.log(`📡 Fetching cart from ${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart with headers:`, headers);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, { headers });
       console.log('📥 Response status:', res.status);
       
       const data = await res.json();
@@ -115,7 +116,7 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
     } finally {
       setLoading(false);
     }
-  }, [apiKey, authToken]);
+  }, [apiKey]);
 
   // Fetch cart items when dialog opens
   useEffect(() => {
@@ -149,9 +150,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
             'X-API-Key': apiKey,
             'Content-Type': 'application/json'
         };
-        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const accessToken = getAccessToken();
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-        const res = await fetch('http://localhost:3000/api/v1/taobao/cart', {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify({ skuId, quantity: newQuantity })
@@ -185,9 +187,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
             'X-API-Key': apiKey,
             'Content-Type': 'application/json'
         };
-        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const accessToken = getAccessToken();
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-        const res = await fetch('http://localhost:3000/api/v1/taobao/cart', {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, {
             method: 'DELETE',
             headers,
             body: JSON.stringify({ skuId })
@@ -244,9 +247,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-      const response = await fetch('http://localhost:3000/api/v1/taobao/render-order', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/render-order`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ sku_ids: selectedSkuIdArray })
@@ -280,9 +284,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-      const response = await fetch('http://localhost:3000/api/v1/taobao/render-order', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/render-order`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ sku_ids: skuIds })
@@ -324,9 +329,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-      const response = await fetch('http://localhost:3000/api/v1/taobao/orders', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ sku_ids: skuIdsToOrder })
@@ -378,9 +384,10 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
           'X-API-Key': apiKey,
           'Content-Type': 'application/json'
         };
-        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const accessToken = getAccessToken();
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-        await fetch('http://localhost:3000/api/v1/taobao/cart', {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, {
           method: 'DELETE',
           headers,
           body: JSON.stringify({ skuId })
@@ -410,10 +417,11 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
       const headers: Record<string, string> = {
         'X-API-Key': apiKey,
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
       
       const response = await fetch(
-        `http://localhost:3000/api/v1/taobao/orders/${orderNumber}/payment-methods`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders/${orderNumber}/payment-methods`,
         { headers }
       );
       
@@ -446,10 +454,11 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
       
       const response = await fetch(
-        `http://localhost:3000/api/v1/taobao/orders/${createdOrder.number}/payment`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders/${createdOrder.number}/payment`,
         {
           method: 'POST',
           headers,
@@ -710,7 +719,6 @@ export function CartDialog({ isOpen, onClose, apiKey, authToken }: CartDialogPro
           onRemoveUnavailable={handleRemoveUnavailable}
           onReCalculate={handleReCalculateOrder}
           apiKey={apiKey}
-          authToken={authToken}
           isCreatingOrder={isCreatingOrder}
         />
       )}

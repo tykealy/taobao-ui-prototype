@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { CartDialog } from '@/components/CartDialog';
+import { getAccessToken } from '@/lib/auth-service';
 
 export default function ProductDetailPage() {
   const router = useRouter();
@@ -13,7 +14,6 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [authToken, setAuthToken] = useState('');
   const [selectedImage, setSelectedImage] = useState<string>('');
   
   // SKU Selection and Cart state
@@ -29,19 +29,16 @@ export default function ProductDetailPage() {
     type: 'success'
   });
 
-  // Load API key and auth token from localStorage
+  // Load API key from localStorage
   useEffect(() => {
     const savedApiKey = localStorage.getItem('apiKey');
-    const savedAuthToken = localStorage.getItem('authToken');
     if (savedApiKey) {
       setApiKey(savedApiKey);
     } else {
       setError('API key not found. Please set your API key on the search page.');
       setLoading(false);
     }
-    if (savedAuthToken) {
-      setAuthToken(savedAuthToken);
-    }
+    // Note: accessToken is retrieved directly in API calls via getAccessToken()
   }, []);
 
   // Fetch product details
@@ -59,12 +56,18 @@ export default function ProductDetailPage() {
         });
         const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/item-detail?${params}`;
 
+        const headers: HeadersInit = {
+          'X-API-Key': apiKey,
+        };
+        
+        const accessToken = getAccessToken();
+        if (accessToken) {
+          headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+
         const response = await fetch(url, {
           method: 'GET',
-          headers: {
-            'X-API-Key': apiKey,
-            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
-          }
+          headers
         });
 
         const data = await response.json();
@@ -106,17 +109,18 @@ export default function ProductDetailPage() {
 
   // Add to cart function
   const addToCart = async () => {
-    if (!selectedSku || !authToken) return;
+    const accessToken = getAccessToken();
+    if (!selectedSku || !accessToken) return;
 
     setIsAddingToCart(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/v1/taobao/cart', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': apiKey,
-          'Authorization': `Bearer ${authToken}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
           itemId: String(product.item_id),
@@ -220,7 +224,7 @@ export default function ProductDetailPage() {
     return displayProperties?.map((prop: any) => prop.value_name).join(', ') || 'Default';
   };
 
-  const isAddToCartDisabled = !selectedSku || !authToken || (selectedSku?.quantity || 0) === 0;
+  const isAddToCartDisabled = !selectedSku || !getAccessToken() || (selectedSku?.quantity || 0) === 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
@@ -580,7 +584,7 @@ export default function ProductDetailPage() {
         {/* Sticky Add to Cart Button */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg z-40">
           <div className="max-w-7xl mx-auto">
-            {!authToken ? (
+            {!getAccessToken() ? (
               <button
                 disabled
                 className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { MobileDialog } from './MobileDialog';
+import { getAccessToken } from '@/lib/auth-service';
 
 interface SKU {
   item_id: string;
@@ -61,7 +62,6 @@ interface OrderSummaryDialogProps {
   onRemoveUnavailable: () => void;
   onReCalculate: (skuIds: string[]) => Promise<void>;
   apiKey: string;
-  authToken: string;
   isCreatingOrder?: boolean;
 }
 
@@ -73,7 +73,6 @@ export function OrderSummaryDialog({
   onRemoveUnavailable,
   onReCalculate,
   apiKey,
-  authToken,
   isCreatingOrder = false,
 }: OrderSummaryDialogProps) {
   const [adjustedQuantities, setAdjustedQuantities] = useState<Record<string, number>>({});
@@ -185,9 +184,10 @@ export function OrderSummaryDialog({
           'X-API-Key': apiKey,
           'Content-Type': 'application/json'
         };
-        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const accessToken = getAccessToken();
+        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-        await fetch('http://localhost:3000/api/v1/taobao/cart', {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/cart`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ skuId, quantity })

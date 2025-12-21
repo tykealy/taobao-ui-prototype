@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { extractProductId, isUrl } from '@/lib/extract-product-id';
+import { authenticateWithBearerToken, storeTokens, getAccessToken } from '@/lib/auth-service';
 
 // API Response Types based on taobao-api-response-type.md
 interface ProductProperty {
@@ -116,7 +117,8 @@ export default function Home() {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [authToken, setAuthToken] = useState('');
+  const [bearerToken, setBearerToken] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
@@ -126,12 +128,27 @@ export default function Home() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  // Save API key to localStorage
-  const saveApiKey = (key: string, token: string) => {
+  // Save API key and authenticate with bearer token
+  const saveApiKey = async (key: string, token: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('apiKey', key);
-      localStorage.setItem('authToken', token);
-      setShowApiKeyInput(false);
+      
+      if (token) {
+        setIsAuthenticating(true);
+        setError('');
+        try {
+          const response = await authenticateWithBearerToken(key, token);
+          storeTokens(response.data.accessToken, response.data.refreshToken);
+          setShowApiKeyInput(false);
+          setBearerToken(''); // Clear bearer token input after successful auth
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Authentication failed');
+        } finally {
+          setIsAuthenticating(false);
+        }
+      } else {
+        setShowApiKeyInput(false);
+      }
     }
   };
 
@@ -139,14 +156,11 @@ export default function Home() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedApiKey = localStorage.getItem('apiKey');
-      const storedAuthToken = localStorage.getItem('authToken');
       if (storedApiKey) {
         setApiKey(storedApiKey);
         setShowApiKeyInput(false);
       }
-      if (storedAuthToken) {
-        setAuthToken(storedAuthToken);
-      }
+      // Note: accessToken is retrieved directly in API calls via getAccessToken()
     }
   }, []);
 
@@ -197,11 +211,12 @@ export default function Home() {
         'Content-Type': 'application/json',
       };
       
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch(`http://localhost:3000/api/v1/taobao/item-search?keyword=${encodeURIComponent(searchKeyword)}&page_no=${page}&language=en`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/item-search?keyword=${encodeURIComponent(searchKeyword)}&page_no=${page}&language=en`, {
         method: 'GET',
         headers,
       });
@@ -231,7 +246,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [apiKey, authToken]);
+  }, [apiKey]);
 
   // Handle search form submission
   const handleSearch = (e: React.FormEvent) => {
@@ -295,13 +310,11 @@ export default function Home() {
         isOpen={isCartOpen} 
         onClose={() => setIsCartOpen(false)} 
         apiKey={apiKey}
-        authToken={authToken}
       />
       <OrdersListDialog
         isOpen={isOrdersOpen}
         onClose={() => setIsOrdersOpen(false)}
         apiKey={apiKey}
-        authToken={authToken}
       />
       {/* Simple Header */}
       <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
@@ -313,7 +326,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
                 <button
                 onClick={() => {
-                  console.log('🛒 Cart button clicked', { apiKey: apiKey ? 'exists' : 'missing', authToken: authToken ? 'exists' : 'missing' });
+                  console.log('🛒 Cart button clicked', { apiKey: apiKey ? 'exists' : 'missing' });
                   setIsCartOpen(true);
                 }}
                 className="px-3 py-2 text-xs sm:text-sm font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 transition-colors flex items-center gap-1"
@@ -353,17 +366,17 @@ export default function Home() {
                 />
                 <input
                   type="password"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="Bearer Token (optional)"
+                  value={bearerToken}
+                  onChange={(e) => setBearerToken(e.target.value)}
+                  placeholder="Third-Party Bearer Token"
                   className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
                 />
                 <button
-                  onClick={() => saveApiKey(apiKey, authToken)}
-                  disabled={!apiKey}
+                  onClick={() => saveApiKey(apiKey, bearerToken)}
+                  disabled={!apiKey || isAuthenticating}
                   className="w-full px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px]"
                 >
-                  Save
+                  {isAuthenticating ? 'Authenticating...' : 'Save'}
                 </button>
               </div>
             </div>
@@ -426,18 +439,18 @@ export default function Home() {
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
                 />
                 <input
-                  type="password"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="Authorization Bearer Token (optional)"
+                  type="text"
+                  value={bearerToken}
+                  onChange={(e) => setBearerToken(e.target.value)}
+                  placeholder="Third-Party Bearer Token"
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
                 />
                 <button
-                  onClick={() => saveApiKey(apiKey, authToken)}
-                  disabled={!apiKey}
+                  onClick={() => saveApiKey(apiKey, bearerToken)}
+                  disabled={!apiKey || isAuthenticating}
                   className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm"
                 >
-                  Save
+                  {isAuthenticating ? 'Authenticating...' : 'Save'}
                 </button>
               </div>
             </div>

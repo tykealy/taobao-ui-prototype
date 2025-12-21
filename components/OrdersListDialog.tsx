@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MobileDialog } from './MobileDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
+import { getAccessToken } from '@/lib/auth-service';
 
 // TypeScript Interfaces
 interface OrderLineItem {
@@ -113,7 +114,6 @@ interface OrdersListDialogProps {
   isOpen: boolean;
   onClose: () => void;
   apiKey: string;
-  authToken: string;
 }
 
 // Status Configuration
@@ -168,7 +168,7 @@ const STATUS_CONFIG: Record<OrderStatus, {
   }
 };
 
-export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersListDialogProps) {
+export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogProps) {
   // Component state
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -248,10 +248,11 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
       const headers: Record<string, string> = {
         'X-API-Key': apiKey,
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
       
       const response = await fetch(
-        `http://localhost:3000/api/v1/taobao/orders?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders?${params.toString()}`,
         { headers }
       );
       
@@ -269,7 +270,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
     } finally {
       setLoading(false);
     }
-  }, [apiKey, authToken, sortBy, sortOrder, selectedStatus, fromDate, toDate]);
+  }, [apiKey, sortBy, sortOrder, selectedStatus, fromDate, toDate]);
 
   // Initial fetch on dialog open
   useEffect(() => {
@@ -315,10 +316,11 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
       const headers: Record<string, string> = {
         'X-API-Key': apiKey,
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
       
       const response = await fetch(
-        `http://localhost:3000/api/v1/taobao/orders/${order.number}/payment-methods`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders/${order.number}/payment-methods`,
         { headers }
       );
       
@@ -351,10 +353,11 @@ export function OrdersListDialog({ isOpen, onClose, apiKey, authToken }: OrdersL
         'X-API-Key': apiKey,
         'Content-Type': 'application/json'
       };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const accessToken = getAccessToken();
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
       
       const response = await fetch(
-        `http://localhost:3000/api/v1/taobao/orders/${selectedOrderForPayment.number}/payment`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders/${selectedOrderForPayment.number}/payment`,
         {
           method: 'POST',
           headers,
