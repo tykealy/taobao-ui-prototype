@@ -18,6 +18,17 @@ export default function ProductDetailPage() {
   
   // SKU Selection and Cart state
   const [selectedSku, setSelectedSku] = useState<any>(null);
+  const [selectedProperties, setSelectedProperties] = useState<Record<string, string>>({});
+  const [propertyGroups, setPropertyGroups] = useState<Array<{
+    propName: string;
+    propId: number;
+    options: Array<{
+      valueName: string;
+      valueId: number;
+      image?: string;
+      availableSkus: any[];
+    }>;
+  }>>([]);
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
@@ -107,6 +118,158 @@ export default function ProductDetailPage() {
     }
   }, [toast.show]);
 
+  // Extract property groups from SKU list
+  useEffect(() => {
+    if (!product?.sku_list || product.sku_list.length === 0) return;
+
+    const groups = new Map<string, {
+      propName: string;
+      propId: number;
+      options: Map<string, {
+        valueName: string;
+        valueId: number;
+        image?: string;
+        availableSkus: any[];
+      }>;
+    }>();
+
+    // Process each SKU and its properties
+    product.sku_list.forEach((sku: any) => {
+      // Use multi-language properties if available
+      const mlSkuProps = product.multi_language_info?.sku_properties?.find(
+        (sp: any) => sp.sku_id === sku.sku_id
+      );
+      const displayProperties = mlSkuProps?.properties || sku.properties;
+
+      displayProperties?.forEach((prop: any) => {
+        // Initialize property group if it doesn't exist
+        if (!groups.has(prop.prop_name)) {
+          groups.set(prop.prop_name, {
+            propName: prop.prop_name,
+            propId: prop.prop_id,
+            options: new Map()
+          });
+        }
+
+        const group = groups.get(prop.prop_name)!;
+        
+        // Initialize option if it doesn't exist
+        if (!group.options.has(prop.value_name)) {
+          group.options.set(prop.value_name, {
+            valueName: prop.value_name,
+            valueId: prop.value_id,
+            image: sku.pic_url,
+            availableSkus: []
+          });
+        }
+
+        // Add this SKU to the option's available SKUs
+        group.options.get(prop.value_name)!.availableSkus.push(sku);
+      });
+    });
+
+    // Convert to array format
+    const propertyGroupsArray = Array.from(groups.values()).map(group => ({
+      propName: group.propName,
+      propId: group.propId,
+      options: Array.from(group.options.values())
+    }));
+
+    setPropertyGroups(propertyGroupsArray);
+  }, [product]);
+
+  // Auto-match SKU when properties are selected
+  useEffect(() => {
+    if (!product?.sku_list || Object.keys(selectedProperties).length === 0) {
+      setSelectedSku(null);
+      return;
+    }
+
+    // Check if all properties are selected
+    if (Object.keys(selectedProperties).length !== propertyGroups.length) {
+      setSelectedSku(null);
+      return;
+    }
+
+    // Find matching SKU
+    const matchingSku = product.sku_list.find((sku: any) => {
+      // Use multi-language properties if available
+      const mlSkuProps = product.multi_language_info?.sku_properties?.find(
+        (sp: any) => sp.sku_id === sku.sku_id
+      );
+      const displayProperties = mlSkuProps?.properties || sku.properties;
+
+      // Check if all properties match
+      return displayProperties?.every((prop: any) => 
+        selectedProperties[prop.prop_name] === prop.value_name
+      );
+    });
+
+    setSelectedSku(matchingSku || null);
+
+    // Update main image if SKU has one
+    if (matchingSku?.pic_url) {
+      setSelectedImage(matchingSku.pic_url);
+    }
+  }, [selectedProperties, product, propertyGroups.length]);
+
+  // Helper function to check if an option is available
+  const isOptionAvailable = (propName: string, valueName: string): boolean => {
+    if (!product?.sku_list) return false;
+
+    // Find all SKUs that have this specific property value
+    const matchingSkus = product.sku_list.filter((sku: any) => {
+      const mlSkuProps = product.multi_language_info?.sku_properties?.find(
+        (sp: any) => sp.sku_id === sku.sku_id
+      );
+      const displayProperties = mlSkuProps?.properties || sku.properties;
+
+      return displayProperties?.some((prop: any) => 
+        prop.prop_name === propName && prop.value_name === valueName
+      );
+    });
+
+    // Check if any of these SKUs also match other selected properties
+    const availableSkus = matchingSkus.filter((sku: any) => {
+      const mlSkuProps = product.multi_language_info?.sku_properties?.find(
+        (sp: any) => sp.sku_id === sku.sku_id
+      );
+      const displayProperties = mlSkuProps?.properties || sku.properties;
+
+      // Check if this SKU matches all other selected properties (excluding current one)
+      const otherSelectedProps = Object.entries(selectedProperties).filter(
+        ([key]) => key !== propName
+      );
+
+      const matchesOtherProps = otherSelectedProps.every(([key, value]) =>
+        displayProperties?.some((prop: any) => 
+          prop.prop_name === key && prop.value_name === value
+        )
+      );
+
+      // Also check if SKU has stock
+      return matchesOtherProps && sku.quantity > 0;
+    });
+
+    return availableSkus.length > 0;
+  };
+
+  // Handle property selection (toggle behavior)
+  const handlePropertySelect = (propName: string, valueName: string) => {
+    setSelectedProperties(prev => {
+      // If clicking the already selected option, remove it (unselect)
+      if (prev[propName] === valueName) {
+        const { [propName]: removed, ...rest } = prev;
+        return rest;
+      }
+      // Otherwise, select the new option
+      return {
+        ...prev,
+        [propName]: valueName
+      };
+    });
+  };
+
   // Add to cart function
   const addToCart = async () => {
     const accessToken = getAccessToken();
@@ -193,16 +356,26 @@ export default function ProductDetailPage() {
   }
 
   // Use pre-calculated USD prices from API
-  const priceInUSD = parseFloat(product.price_usd || '0');
-  const promotionPriceInUSD = product.promotion_price_usd ? parseFloat(product.promotion_price_usd) : undefined;
+  // If SKU is selected, use SKU prices; otherwise use product base prices
+  const priceInUSD = selectedSku 
+    ? parseFloat(selectedSku.price_usd || '0')
+    : parseFloat(product.price_usd || '0');
+  const promotionPriceInUSD = selectedSku
+    ? (selectedSku.promotion_price_usd ? parseFloat(selectedSku.promotion_price_usd) : undefined)
+    : (product.promotion_price_usd ? parseFloat(product.promotion_price_usd) : undefined);
   const hasPromotion = promotionPriceInUSD !== undefined && promotionPriceInUSD > 0 && promotionPriceInUSD < priceInUSD;
   const currentPrice = hasPromotion && promotionPriceInUSD ? promotionPriceInUSD : priceInUSD;
   const originalPrice = hasPromotion ? priceInUSD : undefined;
   const discount = hasPromotion && promotionPriceInUSD ? Math.round((1 - promotionPriceInUSD / priceInUSD) * 100) : 0;
   
   // CNY prices for display (converted from cents to yuan)
-  const priceInCNYCents = parseFloat(product.price || '0');
+  const priceInCNYCents = selectedSku
+    ? parseFloat(selectedSku.price || '0')
+    : parseFloat(product.price || '0');
   const priceInCNY = priceInCNYCents / 100;
+
+  // Stock display - use SKU quantity if selected, otherwise product inventory
+  const displayInventory = selectedSku ? selectedSku.quantity : product.inventory;
 
   // Calculate SKU price for modal
   const getSkuPrice = (sku: any) => {
@@ -438,16 +611,16 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="flex items-center gap-3 flex-wrap text-sm text-gray-600 dark:text-gray-400">
                   <span>¥{priceInCNY.toFixed(2)} CNY</span>
-                  {product.inventory !== undefined && (
+                  {displayInventory !== undefined && (
                     <span className={`px-3 py-1 rounded-full font-medium ${
-                      product.inventory > 10 
+                      displayInventory > 10 
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                        : product.inventory > 0
+                        : displayInventory > 0
                         ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
                         : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                     }`}>
-                      {product.inventory > 0 
-                        ? `${product.inventory} in stock`
+                      {displayInventory > 0 
+                        ? `${displayInventory} in stock`
                         : 'Out of stock'
                       }
                     </span>
@@ -455,77 +628,78 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* SKU Variants - MOVED HERE UNDER PRICE */}
-              {product.sku_list && product.sku_list.length > 0 && (
-                <div className="space-y-3">
+              {/* Property Selector */}
+              {propertyGroups.length > 0 && (
+                <div className="space-y-6">
                   <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
-                    Select Options ({product.sku_list.length} available)
+                    Select Options
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                    {product.sku_list.map((sku: any, idx: number) => {
-                      // Find multilanguage properties for this SKU if available
-                      const mlSkuProps = product.multi_language_info?.sku_properties?.find(
-                        (sp: any) => sp.sku_id === sku.sku_id
-                      );
-                      const displayProperties = mlSkuProps?.properties || sku.properties;
+                  
+                  {propertyGroups.map((group, groupIdx) => (
+                    <div key={groupIdx} className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {group.propName}
+                      </label>
+                      <div className="flex gap-2 flex-wrap">
+                        {group.options.map((option, optionIdx) => {
+                          const isSelected = selectedProperties[group.propName] === option.valueName;
+                          const isAvailable = isOptionAvailable(group.propName, option.valueName);
+                          
+                          return (
+                            <button
+                              key={optionIdx}
+                              onClick={() => handlePropertySelect(group.propName, option.valueName)}
+                              disabled={!isAvailable}
+                              className={`
+                                px-5 py-3 rounded-lg border-2 transition-all min-w-[80px] text-center text-sm
+                                ${isSelected 
+                                  ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-500 font-bold text-orange-600 dark:text-orange-400' 
+                                  : isAvailable
+                                  ? 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-orange-300 dark:hover:border-orange-600 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 text-gray-900 dark:text-white font-medium'
+                                  : 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-600 line-through'
+                                }
+                              `}
+                            >
+                              {option.valueName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
 
-                      // Debug logging
-                      console.log(`SKU ${idx}:`, {
-                        price: sku.price,
-                        promotion_price: sku.promotion_price,
-                        coupon_price: sku.coupon_price,
-                        hasPromotion: sku.promotion_price && parseFloat(sku.promotion_price) > 0 && parseFloat(sku.promotion_price) < parseFloat(sku.price)
-                      });
-
-                      return (
-                         <div 
-                          key={idx} 
-                          onClick={() => setSelectedSku(sku)}
-                          className={`border rounded-lg p-3 transition-all hover:shadow-md cursor-pointer ${
-                            selectedSku?.sku_id === sku.sku_id
-                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-500'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700'
-                          }`}
-                        >
-                          <div className="flex gap-3">
-                            {sku.pic_url && (
-                              <img src={sku.pic_url} alt="SKU" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="space-y-1 mb-2">
-                                {displayProperties?.map((prop: any, pidx: number) => (
-                                  <p key={pidx} className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                                    <span className="font-medium text-gray-900 dark:text-white">{prop.prop_name}:</span> {prop.value_name}
-                                  </p>
-                                ))}
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-baseline gap-2">
-                                  {sku.promotion_price_usd && parseFloat(sku.promotion_price_usd) > 0 && parseFloat(sku.promotion_price_usd) < parseFloat(sku.price_usd) ? (
-                                    <>
-                                      <span className="text-base font-bold text-orange-600 dark:text-orange-400">
-                                        ${parseFloat(sku.promotion_price_usd).toFixed(2)}
-                                      </span>
-                                      <span className="text-xs text-gray-400 line-through">
-                                        ${parseFloat(sku.price_usd).toFixed(2)}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="text-base font-bold text-orange-600 dark:text-orange-400">
-                                      ${parseFloat(sku.price_usd || 0).toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {sku.quantity} left
-                                </span>
-                              </div>
-                            </div>
+                  {/* Selection Summary */}
+                  {Object.keys(selectedProperties).length > 0 && (
+                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Selected:
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {Object.entries(selectedProperties).map(([key, value]) => `${value}`).join(' / ')}
+                            </p>
                           </div>
+                          {selectedSku && (
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                                ${getSkuPrice(selectedSku).toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {selectedSku.quantity} available
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
+                        {!selectedSku && Object.keys(selectedProperties).length < propertyGroups.length && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Please select all options to continue
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -596,7 +770,7 @@ export default function ProductDetailPage() {
                 disabled
                 className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"
               >
-                Select a variant first
+                {propertyGroups.length > 0 ? 'Select all options' : 'No variants available'}
               </button>
             ) : selectedSku.quantity === 0 ? (
               <button
