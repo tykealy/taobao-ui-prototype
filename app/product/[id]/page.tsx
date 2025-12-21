@@ -29,6 +29,7 @@ export default function ProductDetailPage() {
       availableSkus: any[];
     }>;
   }>>([]);
+  const [hasSkuProperties, setHasSkuProperties] = useState(true);
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
@@ -101,12 +102,22 @@ export default function ProductDetailPage() {
     fetchProductDetail();
   }, [apiKey, itemId]);
 
-  // Auto-select SKU if only one exists
+  // Auto-select SKU if only one exists OR if no properties exist
   useEffect(() => {
-    if (product?.sku_list && product.sku_list.length === 1) {
+    if (!product?.sku_list || product.sku_list.length === 0) return;
+    
+    // Auto-select if only one SKU exists
+    if (product.sku_list.length === 1) {
       setSelectedSku(product.sku_list[0]);
+      return;
     }
-  }, [product]);
+    
+    // Auto-select first available SKU if no properties exist
+    if (!hasSkuProperties && product.sku_list.length > 0) {
+      const firstAvailableSku = product.sku_list.find((sku: any) => sku.quantity > 0);
+      setSelectedSku(firstAvailableSku || product.sku_list[0]);
+    }
+  }, [product, hasSkuProperties]);
 
   // Auto-dismiss toast after 3 seconds
   useEffect(() => {
@@ -168,18 +179,26 @@ export default function ProductDetailPage() {
       });
     });
 
-    // Convert to array format
-    const propertyGroupsArray = Array.from(groups.values()).map(group => ({
-      propName: group.propName,
-      propId: group.propId,
-      options: Array.from(group.options.values())
-    }));
+    // Convert to array format and sort by number of options (ascending)
+    const propertyGroupsArray = Array.from(groups.values())
+      .map(group => ({
+        propName: group.propName,
+        propId: group.propId,
+        options: Array.from(group.options.values())
+      }))
+      .sort((a, b) => a.options.length - b.options.length); // Render props with fewer options first
 
     setPropertyGroups(propertyGroupsArray);
+    setHasSkuProperties(propertyGroupsArray.length > 0);
   }, [product]);
 
   // Auto-match SKU when properties are selected
   useEffect(() => {
+    // Skip property matching if SKUs don't have properties
+    if (!hasSkuProperties) {
+      return;
+    }
+    
     if (!product?.sku_list || Object.keys(selectedProperties).length === 0) {
       setSelectedSku(null);
       return;
@@ -211,7 +230,7 @@ export default function ProductDetailPage() {
     if (matchingSku?.pic_url) {
       setSelectedImage(matchingSku.pic_url);
     }
-  }, [selectedProperties, product, propertyGroups.length]);
+  }, [selectedProperties, product, propertyGroups.length, hasSkuProperties]);
 
   // Helper function to check if an option is available
   const isOptionAvailable = (propName: string, valueName: string): boolean => {
@@ -628,8 +647,100 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Property Selector */}
-              {propertyGroups.length > 0 && (
+              {/* Simple SKU Selector - for SKUs without properties */}
+              {!hasSkuProperties && product.sku_list && product.sku_list.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
+                    Select Option
+                  </h3>
+                  
+                  {/* Visual SKU Cards with images */}
+                  <div className="flex flex-col gap-2">
+                    {product.sku_list.map((sku: any, idx: number) => {
+                      const isSelected = selectedSku?.sku_id === sku.sku_id;
+                      const isAvailable = sku.quantity > 0;
+                      const skuPrice = parseFloat(sku.price_usd || sku.promotion_price_usd || '0');
+                      
+                      return (
+                        <button
+                          key={sku.sku_id}
+                          onClick={() => setSelectedSku(sku)}
+                          disabled={!isAvailable}
+                          className={`
+                            flex items-center gap-4 p-4 rounded-lg border-2 transition-all text-left
+                            ${isSelected 
+                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 ring-2 ring-orange-500' 
+                              : isAvailable
+                              ? 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-orange-300 dark:hover:border-orange-600 hover:bg-orange-50/50 dark:hover:bg-orange-900/10'
+                              : 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 opacity-40 cursor-not-allowed'
+                            }
+                          `}
+                        >
+                          {/* SKU Image if available */}
+                          {sku.pic_url && (
+                            <img 
+                              src={sku.pic_url} 
+                              alt={`Option ${idx + 1}`}
+                              className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700 flex-shrink-0"
+                            />
+                          )}
+                          
+                          {/* SKU Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold ${isSelected ? 'text-orange-600 dark:text-orange-400' : 'text-gray-900 dark:text-white'}`}>
+                              Option {idx + 1}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              SKU: {sku.sku_id}
+                            </p>
+                          </div>
+                          
+                          {/* Price & Stock */}
+                          <div className="text-right flex-shrink-0">
+                            <p className={`text-lg font-bold ${isSelected ? 'text-orange-600 dark:text-orange-400' : 'text-gray-900 dark:text-white'}`}>
+                              ${skuPrice.toFixed(2)}
+                            </p>
+                            <p className={`text-xs ${isAvailable ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {isAvailable ? `${sku.quantity} available` : 'Out of stock'}
+                            </p>
+                          </div>
+                          
+                          {/* Selected Indicator */}
+                          {isSelected && (
+                            <div className="flex-shrink-0">
+                              <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Selected Summary */}
+                  {selectedSku && (
+                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Selected: Option {product.sku_list.findIndex((s: any) => s.sku_id === selectedSku.sku_id) + 1}
+                        </p>
+                        <div className="text-right">
+                          <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                            ${parseFloat(selectedSku.price_usd || selectedSku.promotion_price_usd || '0').toFixed(2)}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {selectedSku.quantity} available
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Property Selector - only show when properties exist */}
+              {hasSkuProperties && propertyGroups.length > 0 && (
                 <div className="space-y-6">
                   <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
                     Select Options
@@ -770,7 +881,7 @@ export default function ProductDetailPage() {
                 disabled
                 className="w-full py-4 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed"
               >
-                {propertyGroups.length > 0 ? 'Select all options' : 'No variants available'}
+                {hasSkuProperties ? 'Select all options' : 'Please select an option'}
               </button>
             ) : selectedSku.quantity === 0 ? (
               <button
