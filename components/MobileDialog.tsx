@@ -10,7 +10,7 @@ interface MobileDialogProps {
   children: ReactNode;
   footer?: ReactNode;
   showSwipeIndicator?: boolean;
-  zIndex?: 50 | 60 | 70; // Support nested dialogs
+  zIndex?: 50 | 60 | 70 | 80; // Support nested dialogs
 }
 
 export function MobileDialog({

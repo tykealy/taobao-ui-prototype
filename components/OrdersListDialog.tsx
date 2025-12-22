@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MobileDialog } from './MobileDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
+import { PaymentQRDialog } from './PaymentQRDialog';
 import { getAccessToken } from '@/lib/auth-service';
 
 // TypeScript Interfaces
@@ -181,6 +182,8 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [showPaymentQRDialog, setShowPaymentQRDialog] = useState(false);
+  const [paymentData, setPaymentData] = useState<any>(null);
 
   // Helper Functions
   const formatDate = (isoString: string): string => {
@@ -362,15 +365,16 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
         return;
       }
       
-      // Success: Show simple success message
-      const payment = data.data.payment;
-      const order = data.data.order;
-      alert(`✅ Payment Created Successfully!\n\nOrder: ${order.number}\nTransaction ID: ${payment.transactionId}\nAmount: $${order.total}\nStatus: ${payment.status}`);
+      // Success: Store payment data and show QR dialog
+      setPaymentData(data.data);
       
-      // Close payment dialog
+      // Close payment method dialog
       setShowPaymentDialog(false);
       setSelectedOrderForPayment(null);
       setPaymentError('');
+      
+      // Show QR/Deeplink dialog
+      setShowPaymentQRDialog(true);
       
       // Refresh orders list to show updated status
       fetchOrders(currentPage);
@@ -907,6 +911,16 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
           isProcessing={loadingPaymentMethods || isProcessingPayment}
         />
       )}
+
+      {/* Payment QR/Deeplink Dialog */}
+      <PaymentQRDialog
+        isOpen={showPaymentQRDialog}
+        onClose={() => {
+          setShowPaymentQRDialog(false);
+          setPaymentData(null);
+        }}
+        paymentData={paymentData}
+      />
     </>
   );
 }
