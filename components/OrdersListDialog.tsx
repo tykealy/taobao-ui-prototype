@@ -92,22 +92,11 @@ interface PaymentMethod {
   name: string;
   type: string;
   provider: string;
-  isActive: boolean;
   supportedCurrencies: string[];
   minAmount: string;
   maxAmount: string;
-  processingFee: string;
-  processingFeePercent: string;
-  availableForOrders: boolean;
-  availableForTaobao: boolean;
   icon: string;
   description: string;
-  displayOrder: number;
-  organizationId: number;
-  gatewayConfig: Record<string, any>;
-  metadata: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface OrdersListDialogProps {

@@ -10,22 +10,11 @@ interface PaymentMethod {
   name: string;
   type: string;
   provider: string;
-  isActive: boolean;
   supportedCurrencies: string[];
   minAmount: string;
   maxAmount: string;
-  processingFee: string;
-  processingFeePercent: string;
-  availableForOrders: boolean;
-  availableForTaobao: boolean;
   icon: string;
   description: string;
-  displayOrder: number;
-  organizationId: number;
-  gatewayConfig: Record<string, any>;
-  metadata: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface PaymentMethodsDialogProps {
@@ -91,10 +80,8 @@ export function PaymentMethodsDialog({
 
   if (!isOpen) return null;
 
-  // Filter and sort payment methods
-  const activePaymentMethods = paymentMethods
-    .filter(method => method.isActive)
-    .sort((a, b) => a.displayOrder - b.displayOrder);
+  // Payment methods from API
+  const activePaymentMethods = paymentMethods;
 
   const selectedMethod = activePaymentMethods.find(m => m.id === selectedMethodId);
 
@@ -108,24 +95,6 @@ export function PaymentMethodsDialog({
 
   const getTypeConfig = (type: string) => {
     return TYPE_CONFIG[type] || TYPE_CONFIG.default;
-  };
-
-  const hasProcessingFee = (method: PaymentMethod): boolean => {
-    return parseFloat(method.processingFee) > 0 || parseFloat(method.processingFeePercent) > 0;
-  };
-
-  const formatProcessingFee = (method: PaymentMethod): string => {
-    const fee = parseFloat(method.processingFee);
-    const feePercent = parseFloat(method.processingFeePercent);
-    
-    if (fee > 0 && feePercent > 0) {
-      return `$${fee.toFixed(2)} + ${feePercent}%`;
-    } else if (fee > 0) {
-      return `$${fee.toFixed(2)}`;
-    } else if (feePercent > 0) {
-      return `${feePercent}%`;
-    }
-    return 'Free';
   };
 
   const handleProceedWithPayment = () => {
@@ -167,11 +136,6 @@ export function PaymentMethodsDialog({
                 {selectedMethod.name}
               </span>
             </div>
-            {hasProcessingFee(selectedMethod) && (
-              <span className="text-xs text-blue-600 dark:text-blue-400">
-                Fee: {formatProcessingFee(selectedMethod)}
-              </span>
-            )}
           </div>
         </div>
       )}
@@ -311,15 +275,6 @@ export function PaymentMethodsDialog({
                         </span>
                       ))}
                     </div>
-
-                    {/* Processing Fee */}
-                    {hasProcessingFee(method) && (
-                      <div className="text-center text-xs text-gray-600 dark:text-gray-400 mb-2">
-                        Processing Fee: <span className="font-medium text-gray-900 dark:text-white">
-                          {formatProcessingFee(method)}
-                        </span>
-                      </div>
-                    )}
 
                     {/* Description */}
                     {method.description && method.description.trim() && (
