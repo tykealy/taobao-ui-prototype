@@ -183,6 +183,12 @@ const PAYMENT_STATUS_CONFIG: Record<string, {
     text: 'text-orange-800 dark:text-orange-300',
     icon: '⏱️'
   },
+  paid: {
+    label: 'Paid',
+    bg: 'bg-green-100 dark:bg-green-900/20',
+    text: 'text-green-800 dark:text-green-300',
+    icon: '✅'
+  },
   completed: {
     label: 'Paid',
     bg: 'bg-green-100 dark:bg-green-900/20',
@@ -450,7 +456,8 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
   const getOrderActions = (order: Order) => {
     const actions = [];
     
-    if (order.status === 'payment') {
+    // Show "Pay Now" only if payment is not completed/paid and order is still in payment status
+    if (order.status === 'payment' && order.paymentStatus && !['paid', 'completed', 'processing'].includes(order.paymentStatus)) {
       actions.push({
         label: 'Pay Now',
         onClick: () => handlePayNow(order),
@@ -764,15 +771,14 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
                           {order.number}
                         </span>
 
-                        {/* Status Badge */}
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
-                          {statusConfig.icon} {statusConfig.label}
-                        </span>
-
-                        {/* Payment Status Badge - Only show if different from order status */}
-                        {order.paymentStatus && PAYMENT_STATUS_CONFIG[order.paymentStatus] && (
+                        {/* Status Badge - Show payment status if order is in payment stage and has payment status */}
+                        {order.status === 'payment' && order.paymentStatus && PAYMENT_STATUS_CONFIG[order.paymentStatus] ? (
                           <span className={`px-2 py-1 rounded text-xs font-medium ${PAYMENT_STATUS_CONFIG[order.paymentStatus].bg} ${PAYMENT_STATUS_CONFIG[order.paymentStatus].text}`}>
                             {PAYMENT_STATUS_CONFIG[order.paymentStatus].icon} {PAYMENT_STATUS_CONFIG[order.paymentStatus].label}
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
+                            {statusConfig.icon} {statusConfig.label}
                           </span>
                         )}
 
