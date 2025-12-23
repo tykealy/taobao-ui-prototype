@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MobileDialog } from './MobileDialog';
 import { OrderSummaryDialog } from './OrderSummaryDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
+import { PaymentQRDialog } from './PaymentQRDialog';
 import { getAccessToken } from '@/lib/auth-service';
 
 interface CartItem {
@@ -55,6 +56,8 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [showPaymentQRDialog, setShowPaymentQRDialog] = useState(false);
+  const [paymentData, setPaymentData] = useState<any>(null);
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, GroupedCartItem> = {};
@@ -474,18 +477,18 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
         return;
       }
       
-      // Success: Show simple success message
-      const payment = data.data.payment;
-      const order = data.data.order;
-      alert(`✅ Payment Created Successfully!\n\nOrder: ${order.number}\nTransaction ID: ${payment.transactionId}\nAmount: $${order.total}\nStatus: ${payment.status}`);
+      // Success: Store payment data and show QR dialog
+      setPaymentData(data.data);
       
-      // Close all dialogs
+      // Close payment method dialog
       setShowPaymentDialog(false);
       setCreatedOrder(null);
-      onClose();
+      setPaymentError('');
       
-      // Refresh cart (backend handles item removal)
-      fetchCart();
+      // Show QR/Deeplink dialog
+      setShowPaymentQRDialog(true);
+      
+      // Note: Cart dialog stays open until user closes QR dialog
       
     } catch (err) {
       setPaymentError('Failed to connect to payment service');
@@ -740,6 +743,20 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
         paymentMethods={paymentMethods}
         onSelectPaymentMethod={handleSelectPaymentMethod}
         isProcessing={isProcessingPayment}
+      />
+
+      {/* Payment QR/Deeplink Dialog */}
+      <PaymentQRDialog
+        isOpen={showPaymentQRDialog}
+        onClose={() => {
+          setShowPaymentQRDialog(false);
+          setPaymentData(null);
+          
+          // NOW close cart dialog and refresh
+          onClose();
+          fetchCart();
+        }}
+        paymentData={paymentData}
       />
     </>
   );

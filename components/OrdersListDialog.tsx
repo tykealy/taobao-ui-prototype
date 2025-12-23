@@ -158,6 +158,45 @@ const STATUS_CONFIG: Record<OrderStatus, {
   }
 };
 
+// Payment Status Configuration
+const PAYMENT_STATUS_CONFIG: Record<string, {
+  label: string;
+  bg: string;
+  text: string;
+  icon: string;
+}> = {
+  checkout: {
+    label: 'Checkout',
+    bg: 'bg-yellow-100 dark:bg-yellow-900/20',
+    text: 'text-yellow-800 dark:text-yellow-300',
+    icon: '🛒'
+  },
+  processing: {
+    label: 'Processing',
+    bg: 'bg-blue-100 dark:bg-blue-900/20',
+    text: 'text-blue-800 dark:text-blue-300',
+    icon: '⏳'
+  },
+  pending: {
+    label: 'Pending',
+    bg: 'bg-orange-100 dark:bg-orange-900/20',
+    text: 'text-orange-800 dark:text-orange-300',
+    icon: '⏱️'
+  },
+  completed: {
+    label: 'Paid',
+    bg: 'bg-green-100 dark:bg-green-900/20',
+    text: 'text-green-800 dark:text-green-300',
+    icon: '✅'
+  },
+  failed: {
+    label: 'Payment Failed',
+    bg: 'bg-red-100 dark:bg-red-900/20',
+    text: 'text-red-800 dark:text-red-300',
+    icon: '❌'
+  }
+};
+
 export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogProps) {
   // Component state
   const [orders, setOrders] = useState<Order[]>([]);
@@ -729,6 +768,13 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
                         <span className={`px-2 py-1 rounded text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
                           {statusConfig.icon} {statusConfig.label}
                         </span>
+
+                        {/* Payment Status Badge - Only show if different from order status */}
+                        {order.paymentStatus && PAYMENT_STATUS_CONFIG[order.paymentStatus] && (
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${PAYMENT_STATUS_CONFIG[order.paymentStatus].bg} ${PAYMENT_STATUS_CONFIG[order.paymentStatus].text}`}>
+                            {PAYMENT_STATUS_CONFIG[order.paymentStatus].icon} {PAYMENT_STATUS_CONFIG[order.paymentStatus].label}
+                          </span>
+                        )}
 
                         {/* Item Count */}
                         <span className="text-xs text-gray-500 dark:text-gray-400">
