@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { MobileDialog } from './MobileDialog';
 import { PaymentMethodsDialog } from './PaymentMethodsDialog';
 import { PaymentQRDialog } from './PaymentQRDialog';
+import { OrderDetailsDialog } from './OrderDetailsDialog';
 import { getAccessToken } from '@/lib/auth-service';
 
 // TypeScript Interfaces
@@ -236,6 +237,10 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
   const [showPaymentQRDialog, setShowPaymentQRDialog] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
 
+  // Order details dialog state
+  const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
+  const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null);
+
   // Helper Functions
   const formatDate = (isoString: string): string => {
     const date = new Date(isoString);
@@ -459,8 +464,21 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
     // TODO: Open chat or contact form
   };
 
+  const handleViewDetails = (order: Order) => {
+    setSelectedOrderNumber(order.number);
+    setShowOrderDetailsDialog(true);
+  };
+
   const getOrderActions = (order: Order) => {
     const actions = [];
+    
+    // Add "View Details" button first
+    actions.push({
+      label: 'View Details',
+      onClick: () => handleViewDetails(order),
+      className: 'bg-blue-600 text-white hover:bg-blue-700',
+      icon: '📄'
+    });
     
     // Show "Pay Now" only if payment is not completed/paid and order is still in payment status
     if (order.status === 'payment' && order.paymentStatus && !['paid', 'completed', 'processing', 'credit_owed'].includes(order.paymentStatus)) {
@@ -493,7 +511,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
     actions.push({
       label: 'Contact Seller',
       onClick: () => handleContactSeller(order),
-      className: 'border border-gray-400 text-gray-700 darååååååk:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
+      className: 'border border-gray-400 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
       icon: '💬'
     });
     
@@ -978,6 +996,18 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
           setPaymentData(null);
         }}
         paymentData={paymentData}
+      />
+
+      {/* Order Details Dialog */}
+      <OrderDetailsDialog
+        isOpen={showOrderDetailsDialog}
+        onClose={() => {
+          setShowOrderDetailsDialog(false);
+          setSelectedOrderNumber(null);
+        }}
+        orderNumber={selectedOrderNumber || ''}
+        apiKey={apiKey}
+        onRefreshList={handleRefresh}
       />
     </>
   );
