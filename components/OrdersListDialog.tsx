@@ -200,6 +200,12 @@ const PAYMENT_STATUS_CONFIG: Record<string, {
     bg: 'bg-red-100 dark:bg-red-900/20',
     text: 'text-red-800 dark:text-red-300',
     icon: '❌'
+  },
+  credit_owed: {
+    label: 'Paid (Credit)',
+    bg: 'bg-green-100 dark:bg-green-900/20',
+    text: 'text-green-800 dark:text-green-300',
+    icon: '✅'
   }
 };
 
@@ -457,7 +463,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
     const actions = [];
     
     // Show "Pay Now" only if payment is not completed/paid and order is still in payment status
-    if (order.status === 'payment' && order.paymentStatus && !['paid', 'completed', 'processing'].includes(order.paymentStatus)) {
+    if (order.status === 'payment' && order.paymentStatus && !['paid', 'completed', 'processing', 'credit_owed'].includes(order.paymentStatus)) {
       actions.push({
         label: 'Pay Now',
         onClick: () => handlePayNow(order),
