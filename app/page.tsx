@@ -44,8 +44,8 @@ interface ProductData {
     language: string;
     title: string;
   };
-  price: string;
-  coupon_price?: string;
+  price_usd: number;
+  coupon_price_usd?: number;
   promotion_displays: PromotionDisplay[];
   inventory: number;
   tags: unknown[];
@@ -63,9 +63,9 @@ interface ApiResponse {
   } | null;
 }
 
-// Helper function to truncate a number to 2 decimal places without rounding up
-function truncateToTwoDecimals(num: number): number {
-  return Math.floor(num * 100) / 100;
+// Helper function to format a number to 2 decimal places
+function formatToTwoDecimals(num: number): number {
+  return parseFloat(num.toFixed(2));
 }
 
 // Helper function to determine stock status
@@ -77,29 +77,33 @@ function getStockStatus(inventory: number): { label: string; color: string } {
 
 // Helper function to format price display
 function formatPrice(item: ProductData) {
-  const CNY_TO_USD_RATE = parseFloat(process.env.NEXT_PUBLIC_CNY_TO_USD_RATE || '6.1');
-  
-  const priceInCNY = parseFloat(item.price);
-  const couponPriceInCNY = item.coupon_price ? parseFloat(item.coupon_price) : undefined;
-  
-  // Convert to USD and truncate to 2 decimal places
-  const price = truncateToTwoDecimals(priceInCNY / CNY_TO_USD_RATE);
-  const couponPrice = couponPriceInCNY ? truncateToTwoDecimals(couponPriceInCNY / CNY_TO_USD_RATE) : undefined;
+  // Use USD prices directly from API (no conversion needed)
+  const price = formatToTwoDecimals(item.price_usd || 0);
+  const couponPrice = item.coupon_price_usd !== undefined 
+    ? formatToTwoDecimals(item.coupon_price_usd) 
+    : undefined;
   
   const hasCoupon = couponPrice !== undefined && couponPrice > 0;
   const hasPromotion = hasCoupon && couponPrice < price;
   
-  const currentPrice = hasPromotion && couponPrice ? couponPrice : price;
-  const originalPrice = hasPromotion ? price : undefined;
+  // Always display price_usd, never show coupon_price_usd as main price
+  const currentPrice = price;
+  const originalPrice: number | undefined = undefined; // Remove strikethrough price display
+  
+  // Calculate discount percentage and savings amount
   const discount = hasPromotion && couponPrice
     ? Math.round((1 - couponPrice / price) * 100)
+    : 0;
+  const savings = hasPromotion && couponPrice
+    ? formatToTwoDecimals(price - couponPrice)
     : 0;
   
   return {
     current: currentPrice,
     original: originalPrice,
     hasCoupon,
-    discount
+    discount,
+    savings
   };
 }
 
@@ -553,16 +557,11 @@ export default function Home() {
                           <span className="text-[10px] sm:text-xs text-orange-600 dark:text-orange-500 font-bold">
                             .{priceInfo.current.toFixed(2).split('.')[1]}
                           </span>
-                          {priceInfo.original && (
-                            <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 line-through ml-1">
-                              ${priceInfo.original.toFixed(2)}
-                            </span>
-                          )}
                         </div>
-                        {priceInfo.hasCoupon && (
+                        {priceInfo.hasCoupon && priceInfo.savings > 0 && (
                           <div className="inline-block mt-1">
                             <span className="text-[9px] sm:text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-1.5 py-0.5 rounded font-medium">
-                              🎟️ Coupon
+                              Save ${priceInfo.savings.toFixed(2)}
                             </span>
                           </div>
                         )}
