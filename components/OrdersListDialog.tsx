@@ -481,7 +481,7 @@ export function OrdersListDialog({ isOpen, onClose, apiKey }: OrdersListDialogPr
     });
     
     // Show "Pay Now" only if payment is not completed/paid and order is still in payment status
-    if (order.status === 'payment' && order.paymentStatus && !['paid', 'completed', 'processing', 'credit_owed'].includes(order.paymentStatus)) {
+    if (order.status === 'payment' && (!order.paymentStatus || !['paid', 'completed', 'credit_owed'].includes(order.paymentStatus))) {
       actions.push({
         label: 'Pay Now',
         onClick: () => handlePayNow(order),
