@@ -630,7 +630,6 @@ export default function Home() {
                 ref={imageInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={handleImageSelect}
                 className="hidden"
               />
