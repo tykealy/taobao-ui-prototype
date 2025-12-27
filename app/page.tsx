@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { extractProductId, isUrl } from '@/lib/extract-product-id';
 import { authenticateWithBearerToken, storeTokens, getAccessToken } from '@/lib/auth-service';
+import { uploadImageForSearch, createImagePreview, revokeImagePreview } from '@/lib/upload-image';
 
 // API Response Types based on taobao-api-response-type.md
 interface ProductProperty {
@@ -128,9 +129,16 @@ export default function Home() {
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   
+  // Image search states
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isImageUploading, setIsImageUploading] = useState(false);
+  const [searchMode, setSearchMode] = useState<'keyword' | 'image' | null>(null);
+  
   const router = useRouter();
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Save API key and authenticate with bearer token
   const saveApiKey = async (key: string, token: string) => {
@@ -174,12 +182,20 @@ export default function Home() {
       const savedSearchState = sessionStorage.getItem('searchState');
       if (savedSearchState) {
         try {
-          const { keyword: savedKeyword, items: savedItems, pageNo: savedPageNo } = JSON.parse(savedSearchState);
-          if (savedKeyword && savedItems && savedItems.length > 0) {
-            setKeyword(savedKeyword);
+          const { 
+            searchMode: savedMode, 
+            keyword: savedKeyword, 
+            items: savedItems, 
+            pageNo: savedPageNo,
+            hasMore: savedHasMore 
+          } = JSON.parse(savedSearchState);
+          
+          if (savedItems && savedItems.length > 0) {
+            setSearchMode(savedMode);
+            setKeyword(savedKeyword || '');
             setItems(savedItems);
             setPageNo(savedPageNo || 1);
-            setHasMore(true);
+            setHasMore(savedHasMore !== undefined ? savedHasMore : true);
           }
         } catch (err) {
           console.error('Failed to restore search state:', err);
@@ -190,14 +206,16 @@ export default function Home() {
 
   // Save search state to sessionStorage whenever it changes
   useEffect(() => {
-    if (typeof window !== 'undefined' && keyword && items.length > 0) {
+    if (typeof window !== 'undefined' && items.length > 0) {
       sessionStorage.setItem('searchState', JSON.stringify({
+        searchMode,
         keyword,
         items,
-        pageNo
+        pageNo,
+        hasMore
       }));
     }
-  }, [keyword, items, pageNo]);
+  }, [searchMode, keyword, items, pageNo, hasMore]);
 
   // Fetch products from API
   const fetchProducts = useCallback(async (page: number, searchKeyword: string) => {
@@ -252,6 +270,55 @@ export default function Home() {
     }
   }, [apiKey]);
 
+  // Fetch products by image from API
+  const fetchProductsByImage = useCallback(async (imageUrl: string) => {
+    if (!apiKey) {
+      setError('Please set your API key first');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const headers: HeadersInit = {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json',
+      };
+      
+      const accessToken = getAccessToken();
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
+      // Same endpoint, but with pic_url instead of keyword
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/item-search?pic_url=${encodeURIComponent(imageUrl)}&language=en`, {
+        method: 'GET',
+        headers,
+      });
+
+      const result: ApiResponse = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to search by image');
+      }
+
+      if (result.success && result.data?._body?.data?.data) {
+        const newItems = result.data._body.data.data;
+        setItems(newItems);
+        setHasMore(false); // Image search doesn't support pagination
+        setSearchMode('image');
+      } else {
+        throw new Error(result.message || 'No products found for this image');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiKey]);
+
   // Handle search form submission
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,12 +345,108 @@ export default function Home() {
     setPageNo(1);
     setItems([]);
     setHasMore(true);
+    setSearchMode('keyword');
     fetchProducts(1, keyword);
   };
 
+  // Handle image file selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setError('Invalid file type. Please upload a JPEG, PNG, or WebP image.');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('File size exceeds 10MB limit');
+      return;
+    }
+
+    // Clear any previous errors
+    setError('');
+    
+    // Set selected image and create preview
+    setSelectedImage(file);
+    const previewUrl = createImagePreview(file);
+    setImagePreview(previewUrl);
+    
+    // Clear text keyword when image is selected
+    setKeyword('');
+  };
+
+  // Handle image search/upload
+  const handleImageSearch = async () => {
+    if (!selectedImage || !apiKey) {
+      setError('Please select an image and ensure API key is set');
+      return;
+    }
+
+    setIsImageUploading(true);
+    setError('');
+
+    try {
+      const accessToken = getAccessToken();
+      const result = await uploadImageForSearch(selectedImage, apiKey, accessToken || undefined);
+
+      if (result.success && result.data) {
+        const imageUrl = result.data;
+        
+        // Search for products using the uploaded image
+        await fetchProductsByImage(imageUrl);
+        
+        // Clear the image selection after search completes
+        clearImageSelection();
+      } else {
+        throw new Error(result.message || 'Failed to upload image');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload image');
+      
+      // If we have the image URL but search failed, show it in alert for retry
+      if (err instanceof Error && err.message.includes('search')) {
+        // Search failed but upload succeeded - could add retry logic here
+      }
+    } finally {
+      setIsImageUploading(false);
+    }
+  };
+
+  // Clear image selection
+  const clearImageSelection = () => {
+    if (imagePreview) {
+      revokeImagePreview(imagePreview);
+    }
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
+  // Open file picker
+  const openImagePicker = () => {
+    imageInputRef.current?.click();
+  };
+
+  // Cleanup image preview on unmount
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        revokeImagePreview(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
   // Set up intersection observer for infinite scroll
   useEffect(() => {
-    if (loading || !hasMore) return;
+    // Only enable infinite scroll for keyword search
+    if (loading || !hasMore || searchMode !== 'keyword') return;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -306,7 +469,7 @@ export default function Home() {
         observerRef.current.unobserve(currentLoadMoreRef);
       }
     };
-  }, [loading, hasMore, pageNo, keyword, items.length, fetchProducts]);
+  }, [loading, hasMore, pageNo, keyword, items.length, fetchProducts, searchMode]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
@@ -386,14 +549,49 @@ export default function Home() {
             </div>
           )}
           
+          {/* Image Preview (Mobile) */}
+          {imagePreview && selectedImage && (
+            <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-3">
+                <img 
+                  src={imagePreview} 
+                  alt="Selected" 
+                  className="w-16 h-16 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                    {selectedImage.name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearImageSelection}
+                  className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                  aria-label="Remove image"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Search Form (Mobile) */}
           <form onSubmit={handleSearch}>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mb-2">
               <div className="flex-1 relative">
                 <input
                   type="text"
                   value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
+                  onChange={(e) => {
+                    setKeyword(e.target.value);
+                    // Clear image selection when user types in keyword
+                    if (e.target.value && selectedImage) {
+                      clearImageSelection();
+                    }
+                  }}
                   placeholder="Search or paste link..."
                   className="w-full px-4 py-2.5 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white min-h-[44px]"
                 />
@@ -404,6 +602,10 @@ export default function Home() {
                     try {
                       const text = await navigator.clipboard.readText();
                       setKeyword(text);
+                      // Clear image selection when pasting text
+                      if (selectedImage) {
+                        clearImageSelection();
+                      }
                     } catch (err) {
                       console.error('Failed to read clipboard:', err);
                     }
@@ -420,6 +622,36 @@ export default function Home() {
               >
                 {isNavigating ? '...' : loading && items.length === 0 ? '...' : '🔍'}
               </button>
+            </div>
+            
+            {/* Image Search Controls (Mobile) */}
+            <div className="flex gap-2">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={openImagePicker}
+                disabled={isImageUploading}
+                className="flex-1 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm min-h-[44px] flex items-center justify-center gap-2"
+              >
+                📷 {selectedImage ? 'Change Image' : 'Camera/Upload'}
+              </button>
+              {selectedImage && (
+                <button
+                  type="button"
+                  onClick={handleImageSearch}
+                  disabled={isImageUploading || !apiKey}
+                  className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold text-sm min-h-[44px]"
+                >
+                  {isImageUploading ? 'Uploading...' : 'Search by Image'}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -460,13 +692,47 @@ export default function Home() {
             </div>
           )}
 
+          {/* Image Preview (Desktop) */}
+          {imagePreview && selectedImage && (
+            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-4">
+                <img 
+                  src={imagePreview} 
+                  alt="Selected" 
+                  className="w-20 h-20 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {selectedImage.name}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearImageSelection}
+                  className="px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors font-medium text-sm"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Search Form */}
           <form onSubmit={handleSearch}>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mb-3">
               <input
                 type="text"
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) => {
+                  setKeyword(e.target.value);
+                  // Clear image selection when user types in keyword
+                  if (e.target.value && selectedImage) {
+                    clearImageSelection();
+                  }
+                }}
                 placeholder="Search products or paste product link..."
                 className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
               />
@@ -477,6 +743,28 @@ export default function Home() {
               >
                 {isNavigating ? 'Opening...' : loading && items.length === 0 ? 'Searching...' : 'Search'}
               </button>
+            </div>
+            
+            {/* Image Search Controls (Desktop) */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={openImagePicker}
+                disabled={isImageUploading}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm flex items-center gap-2"
+              >
+                📷 {selectedImage ? 'Change Image' : 'Upload Image'}
+              </button>
+              {selectedImage && (
+                <button
+                  type="button"
+                  onClick={handleImageSearch}
+                  disabled={isImageUploading || !apiKey}
+                  className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold text-sm"
+                >
+                  {isImageUploading ? 'Uploading...' : 'Search by Image'}
+                </button>
+              )}
             </div>
           </form>
         </div>
