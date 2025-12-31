@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { extractProductId, isUrl } from '@/lib/extract-product-id';
+import { extractProductId, isUrl, isShortenedTaobaoUrl, extractUrlFromText } from '@/lib/extract-product-id';
 import { authenticateWithBearerToken, storeTokens, getAccessToken } from '@/lib/auth-service';
 import { uploadImageForSearch, createImagePreview, revokeImagePreview } from '@/lib/upload-image';
 
@@ -320,13 +320,41 @@ export default function Home() {
   }, [apiKey]);
 
   // Handle search form submission
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!keyword.trim() || !apiKey) return;
     
+    // Auto-extract URL from mixed text (e.g., shared from Taobao app)
+    const cleanedInput = extractUrlFromText(keyword.trim());
+    
     // Check if input is a product URL
-    if (isUrl(keyword)) {
-      const productId = extractProductId(keyword);
+    if (isUrl(cleanedInput)) {
+      // Check if it's a shortened link that needs resolution
+      if (isShortenedTaobaoUrl(cleanedInput)) {
+        setIsNavigating(true);
+        setError('');
+        
+        try {
+          const response = await fetch(`/api/resolve-url?url=${encodeURIComponent(cleanedInput)}`);
+          const result = await response.json();
+          
+          if (result.success && result.data?.productId) {
+            router.push(`/product/${result.data.productId}`);
+            return;
+          } else {
+            setError(result.message || 'Could not resolve the shortened URL. Please try opening the link in Taobao app first and copy the full URL.');
+            setIsNavigating(false);
+            return;
+          }
+        } catch (err) {
+          setError('Failed to resolve URL. Please try again or use the full product URL.');
+          setIsNavigating(false);
+          return;
+        }
+      }
+      
+      // Try to extract product ID from regular URL
+      const productId = extractProductId(cleanedInput);
       
       if (productId) {
         // Show loading state and navigate to product page
@@ -620,7 +648,7 @@ export default function Home() {
                 disabled={loading || !keyword.trim() || !apiKey || isNavigating}
                 className="px-4 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold shadow-md text-sm min-h-[44px]"
               >
-                {isNavigating ? '...' : loading && items.length === 0 ? '...' : '🔍'}
+                {isNavigating ? 'Resolving...' : loading && items.length === 0 ? '...' : '🔍'}
               </button>
             </div>
             
@@ -740,7 +768,7 @@ export default function Home() {
                 disabled={loading || !keyword.trim() || !apiKey || isNavigating}
                 className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold shadow-md min-h-[44px]"
               >
-                {isNavigating ? 'Opening...' : loading && items.length === 0 ? 'Searching...' : 'Search'}
+                {isNavigating ? 'Resolving link...' : loading && items.length === 0 ? 'Searching...' : 'Search'}
               </button>
             </div>
             
