@@ -870,16 +870,27 @@ export default function ProductDetailPage() {
 
               {/* Shop Info */}
               {product.shop_name && (
-                <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                    {product.shop_name.charAt(0).toUpperCase()}
+                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                  {/* Shop Name with Avatar */}
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                      {product.shop_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {product.shop_name}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Official Store</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-white">
-                      {product.shop_name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Official Store</p>
-                  </div>
+                  
+                  {/* View Shop Button */}
+                  <button 
+                    onClick={() => router.push(`/shop/${product.shop_id}`)}
+                    className="w-full py-2.5 px-4 bg-white dark:bg-gray-700 border-2 border-orange-500 dark:border-orange-600 text-orange-600 dark:text-orange-400 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors font-semibold text-sm"
+                  >
+                    View Shop
+                  </button>
                 </div>
               )}
 
