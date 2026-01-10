@@ -84,7 +84,7 @@ interface OrdersResponse {
   };
 }
 
-type OrderStatus = 'pending' | 'payment' | 'shipping' | 'completed' | 'cancelled' | 'failed';
+type OrderStatus = 'pending' | 'payment' | 'shipping' | 'completed' | 'cancelled' | 'failed' | 'at_cn_wh' | 'at_kh_wh';
 type SortField = 'total' | 'status' | 'updated_at';
 type SortOrder = 'asc' | 'desc';
 
@@ -135,6 +135,20 @@ const STATUS_CONFIG: Record<OrderStatus, {
     text: 'text-purple-800 dark:text-purple-300',
     border: 'border-purple-300 dark:border-purple-700',
     icon: '🚚'
+  },
+  "at_cn_wh":{
+    label: 'Arrived at China Warehouse',
+    bg: 'bg-green-100 dark:bg-green-900/20',
+    text: 'text-green-800 dark:text-green-300',
+    border: 'border-green-300 dark:border-green-700',
+    icon: '🇨🇳'
+  },
+  "at_kh_wh":{
+    label: 'Arrived at Cambodia Warehouse',
+    bg: 'bg-green-100 dark:bg-green-900/20',
+    text: 'text-green-800 dark:text-green-300',
+    border: 'border-green-300 dark:border-green-700',
+    icon: '🇰🇭'
   },
   completed: {
     label: 'Completed',
