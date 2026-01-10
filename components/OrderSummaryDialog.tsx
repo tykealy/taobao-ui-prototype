@@ -63,6 +63,8 @@ interface OrderSummaryDialogProps {
   onReCalculate: (skuIds: string[]) => Promise<void>;
   apiKey: string;
   isCreatingOrder?: boolean;
+  transportMode: 'land' | 'air' | 'sea';
+  onTransportModeChange: (mode: 'land' | 'air' | 'sea') => void;
 }
 
 export function OrderSummaryDialog({
@@ -74,6 +76,8 @@ export function OrderSummaryDialog({
   onReCalculate,
   apiKey,
   isCreatingOrder = false,
+  transportMode,
+  onTransportModeChange,
 }: OrderSummaryDialogProps) {
   const [adjustedQuantities, setAdjustedQuantities] = useState<Record<string, number>>({});
   const [isRecalculating, setIsRecalculating] = useState(false);
@@ -324,6 +328,90 @@ export function OrderSummaryDialog({
     >
       <div className="space-y-4">
           
+          {/* Transport Mode Selector */}
+          <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              Select Transport Mode
+            </h4>
+            <div className="grid grid-cols-3 gap-2">
+              {/* Land Transport */}
+              <button
+                onClick={() => onTransportModeChange('land')}
+                className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all min-h-[88px] ${
+                  transportMode === 'land'
+                    ? 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-md'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-green-300 dark:hover:border-green-700'
+                }`}
+              >
+                <span className="text-3xl mb-1">🚛</span>
+                <span className={`text-xs font-medium ${
+                  transportMode === 'land'
+                    ? 'text-green-700 dark:text-green-400'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}>
+                  Land
+                </span>
+                {transportMode === 'land' && (
+                  <span className="text-xs text-green-600 dark:text-green-500 mt-0.5">✓ Default</span>
+                )}
+              </button>
+
+              {/* Air Transport */}
+              <button
+                onClick={() => onTransportModeChange('air')}
+                className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all min-h-[88px] ${
+                  transportMode === 'air'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-700'
+                }`}
+              >
+                <span className="text-3xl mb-1">✈️</span>
+                <span className={`text-xs font-medium ${
+                  transportMode === 'air'
+                    ? 'text-blue-700 dark:text-blue-400'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}>
+                  Air
+                </span>
+                {transportMode === 'air' && (
+                  <span className="text-xs text-blue-600 dark:text-blue-500 mt-0.5">✓</span>
+                )}
+              </button>
+
+              {/* Sea Transport */}
+              <button
+                onClick={() => onTransportModeChange('sea')}
+                className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all min-h-[88px] ${
+                  transportMode === 'sea'
+                    ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/30 shadow-md'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-cyan-300 dark:hover:border-cyan-700'
+                }`}
+              >
+                <span className="text-3xl mb-1">🚢</span>
+                <span className={`text-xs font-medium ${
+                  transportMode === 'sea'
+                    ? 'text-cyan-700 dark:text-cyan-400'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}>
+                  Sea
+                </span>
+                {transportMode === 'sea' && (
+                  <span className="text-xs text-cyan-600 dark:text-cyan-500 mt-0.5">✓</span>
+                )}
+              </button>
+            </div>
+            
+            {/* Air Transport Weight Calculation Message */}
+            {transportMode === 'air' && (
+              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <p className="text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                  <span className="text-sm">ℹ️</span>
+                  <span>Final shipping cost will be calculated based on actual weight</span>
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Summary Stats Card - 4 Categories */}
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <div className="grid grid-cols-2 gap-3">

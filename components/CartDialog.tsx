@@ -58,6 +58,9 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
   const [paymentError, setPaymentError] = useState('');
   const [showPaymentQRDialog, setShowPaymentQRDialog] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
+  
+  // Transport mode state (reset to default when order summary opens)
+  const [transportMode, setTransportMode] = useState<'land' | 'air' | 'sea'>('land');
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, GroupedCartItem> = {};
@@ -240,6 +243,9 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
     setIsCheckoutLoading(true);
     setError('');
     
+    // Reset transport mode to default
+    setTransportMode('land');
+    
     try {
       const selectedSkuIdArray = Array.from(selectedSkuIds);
       
@@ -338,7 +344,10 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/taobao/orders`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ sku_ids: skuIdsToOrder })
+        body: JSON.stringify({ 
+          sku_ids: skuIdsToOrder,
+          transport_mode: transportMode 
+        })
       });
       
       const data = await response.json();
@@ -723,6 +732,8 @@ export function CartDialog({ isOpen, onClose, apiKey }: CartDialogProps) {
           onReCalculate={handleReCalculateOrder}
           apiKey={apiKey}
           isCreatingOrder={isCreatingOrder}
+          transportMode={transportMode}
+          onTransportModeChange={setTransportMode}
         />
       )}
 
